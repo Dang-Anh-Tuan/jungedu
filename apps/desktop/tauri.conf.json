@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schema.tauri.app/config/tauri.conf.json",
+  "productName": "JungEdu AI Teacher Assistant",
+  "version": "0.1.0",
+  "identifier": "com.jungedu.teacherassistant",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "title": "JungEdu",
+        "width": 1200,
+        "height": 800
+      }
+    ]
+  },
+  "allowlist": {
+    "shell": {
+      "open": true
+    }
+  }
+}
+
