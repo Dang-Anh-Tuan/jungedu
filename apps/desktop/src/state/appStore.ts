@@ -1,10 +1,27 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore'
+import { ref, uploadString, getDownloadURL } from 'firebase/storage'
+import { db, storage } from '../lib/firebase'
 import type { Exam, GradingResult, SchoolClass, Submission, Student } from '../types'
 
-const LEGACY_DEFAULT_CLASS_ID = 'class_default'
+function uid(prefix: string) {
+  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`
+}
+
+function cleanData<T>(obj: T): T {
+  if (obj === null || typeof obj !== 'object') return obj
+  if (Array.isArray(obj)) return obj.map(cleanData) as unknown as T
+  const copy: any = {}
+  for (const key in obj) {
+    if ((obj as any)[key] !== undefined) {
+      copy[key] = cleanData((obj as any)[key])
+    }
+  }
+  return copy as T
+}
 
 type AppState = {
+  isSyncing: boolean
   teacherName: string
   classes: SchoolClass[]
   students: Student[]
@@ -13,287 +30,237 @@ type AppState = {
   selectedExamId?: string
   selectedSubmissionId?: string
 
-  createClass: (input: Omit<SchoolClass, 'id'>) => string
-  deleteClass: (classId: string) => void
+  createClass: (input: Omit<SchoolClass, 'id'>) => Promise<string>
+  deleteClass: (classId: string) => Promise<void>
   importStudentsForClass: (
     classId: string,
     rows: { name: string; studentCode?: string; hocLuc?: string; notes?: string }[]
-  ) => void
+  ) => Promise<void>
 
-  createExam: (input: Omit<Exam, 'id'>) => string
-  updateExam: (examId: string, patch: Partial<Omit<Exam, 'id'>>) => void
-  deleteExam: (examId: string) => void
-  cloneExam: (examId: string) => string
+  createExam: (input: Omit<Exam, 'id'>) => Promise<string>
+  updateExam: (examId: string, patch: Partial<Omit<Exam, 'id'>>) => Promise<void>
+  deleteExam: (examId: string) => Promise<void>
+  cloneExam: (examId: string) => Promise<string>
 
-  createSubmission: (input: { examId: string; studentId: string }) => string
+  createSubmission: (input: { examId: string; studentId: string }) => Promise<string>
   setSubmissionImages: (
     submissionId: string,
     files: { id: string; name: string; objectUrl: string; dataUrl: string }[]
-  ) => void
+  ) => Promise<void>
   replaceSubmissionOcrPages: (
     submissionId: string,
     pages: { imageName: string; ocrText: string; confidence: number; correctedText: string }[]
-  ) => void
-  setOcrPageCorrectedText: (submissionId: string, pageId: string, correctedText: string) => void
-  setGradingResult: (submissionId: string, result: GradingResult) => void
+  ) => Promise<void>
+  setOcrPageCorrectedText: (submissionId: string, pageId: string, correctedText: string) => Promise<void>
+  setGradingResult: (submissionId: string, result: GradingResult) => Promise<void>
 }
 
-function uid(prefix: string) {
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`
-}
+export const useAppStore = create<AppState>((set, get) => ({
+  isSyncing: true,
+  teacherName: 'Thầy/Cô',
+  classes: [],
+  students: [],
+  exams: [],
+  submissions: [],
 
-function migrateToV2(st: Record<string, unknown>): Record<string, unknown> {
-  const classes =
-    Array.isArray(st.classes) && (st.classes as SchoolClass[]).length > 0
-      ? (st.classes as SchoolClass[])
-      : [{ id: LEGACY_DEFAULT_CLASS_ID, name: 'Lớp mặc định' }]
+  createClass: async (input) => {
+    const id = uid('class')
+    const cls: SchoolClass = { id, ...input }
+    await setDoc(doc(db, 'classes', id), cleanData(cls))
+    return id
+  },
 
-  const studentsRaw = Array.isArray(st.students) ? (st.students as Partial<Student>[]) : []
-  const examsRaw = Array.isArray(st.exams) ? (st.exams as Partial<Exam>[]) : []
+  deleteClass: async (classId) => {
+    const batch = writeBatch(db)
+    batch.delete(doc(db, 'classes', classId))
+    
+    // delete students in this class
+    get().students.filter(st => st.classId === classId).forEach(st => {
+      batch.delete(doc(db, 'students', st.id))
+    })
 
-  const students: Student[] = studentsRaw.map((s) => ({
-    id: String(s.id ?? uid('student')),
-    classId: String(s.classId ?? LEGACY_DEFAULT_CLASS_ID),
-    studentCode: s.studentCode ? String(s.studentCode) : undefined,
-    hocLuc: s.hocLuc ? String(s.hocLuc) : undefined,
-    name: String(s.name ?? '').trim() || 'Học sinh',
-    tags: s.tags ?? [],
-    notes: s.notes ?? '',
-    customRules: s.customRules ?? []
-  }))
+    // delete exams and submissions
+    const examsToDelete = get().exams.filter(e => e.classId === classId)
+    examsToDelete.forEach(e => {
+      batch.delete(doc(db, 'exams', e.id))
+      get().submissions.filter(sub => sub.examId === e.id).forEach(sub => {
+        batch.delete(doc(db, 'submissions', sub.id))
+      })
+    })
 
-  const exams: Exam[] = examsRaw.map((e) => ({
-    id: String(e.id ?? uid('exam')),
-    classId: String(e.classId ?? LEGACY_DEFAULT_CLASS_ID),
-    title: String(e.title ?? ''),
-    subject: String(e.subject ?? ''),
-    grade: Number(e.grade ?? 0),
-    requirements: String(e.requirements ?? ''),
-    rubric: e.rubric ?? { content: 4, grammar: 2, creativity: 2, presentation: 2 },
-    teacherStyle: (e.teacherStyle as Exam['teacherStyle']) ?? 'encouraging'
-  }))
+    await batch.commit()
+  },
 
-  return {
-    ...st,
-    teacherName: typeof st.teacherName === 'string' ? st.teacherName : 'Thầy/Cô',
-    classes,
-    students,
-    exams,
-    submissions: Array.isArray(st.submissions) ? st.submissions : []
-  }
-}
+  importStudentsForClass: async (classId, rows) => {
+    const cleaned = rows
+      .map((r) => ({
+        name: r.name.trim(),
+        studentCode: r.studentCode?.trim() || undefined,
+        hocLuc: r.hocLuc?.trim() || undefined,
+        notes: r.notes?.trim() || undefined
+      }))
+      .filter((r) => r.name.length > 0)
 
-/** Không còn «Lớp mặc định»: gỡ id ảo, gán dữ liệu cũ sang một lớp thật nếu cần */
-/** Tên ngắn gọn cho dữ liệu migrate từ lớp ảo (không dùng câu dài như «đã nhập trước đây») */
-const MIGRATION_CLASS_FALLBACK_NAME = 'Lớp'
+    const batch = writeBatch(db)
+    
+    // Remove existing students for this class
+    get().students.filter(st => st.classId === classId).forEach(st => {
+      batch.delete(doc(db, 'students', st.id))
+    })
 
-function migrateRemoveDefaultClass(st: Record<string, unknown>): Record<string, unknown> {
-  let classes = Array.isArray(st.classes) ? ([...(st.classes as SchoolClass[])] as SchoolClass[]) : []
-  classes = classes.filter((c) => c.id !== LEGACY_DEFAULT_CLASS_ID)
-
-  let students = Array.isArray(st.students) ? ([...(st.students as Student[])] as Student[]) : []
-  let exams = Array.isArray(st.exams) ? ([...(st.exams as Exam[])] as Exam[]) : []
-
-  const hasOrphans =
-    students.some((s) => s.classId === LEGACY_DEFAULT_CLASS_ID) ||
-    exams.some((e) => e.classId === LEGACY_DEFAULT_CLASS_ID)
-
-  if (hasOrphans) {
-    const nid = uid('class')
-    classes.push({ id: nid, name: MIGRATION_CLASS_FALLBACK_NAME })
-    students = students.map((s) =>
-      s.classId === LEGACY_DEFAULT_CLASS_ID ? { ...s, classId: nid } : s
-    )
-    exams = exams.map((e) =>
-      e.classId === LEGACY_DEFAULT_CLASS_ID ? { ...e, classId: nid } : e
-    )
-  }
-
-  return { ...st, classes, students, exams }
-}
-
-/** Đổi tên lớp migrate cũ sang tên ngắn */
-function migrateV4RenameLegacyClassTitles(st: Record<string, unknown>): Record<string, unknown> {
-  const bad = 'Lớp (đã nhập trước đây)'
-  if (!Array.isArray(st.classes)) return st
-  const classes = (st.classes as SchoolClass[]).map((c) =>
-    c.name === bad ? { ...c, name: MIGRATION_CLASS_FALLBACK_NAME } : c
-  )
-  return { ...st, classes }
-}
-
-export const useAppStore = create<AppState>()(
-  persist(
-    (set, get) => ({
-      teacherName: 'Thầy/Cô',
-      classes: [],
-      students: [],
-      exams: [],
-      submissions: [],
-
-      createClass: (input) => {
-        const id = uid('class')
-        const cls: SchoolClass = { id, ...input }
-        set((s) => ({ classes: [...s.classes, cls] }))
-        return id
-      },
-
-      deleteClass: (classId) => {
-        set((s) => {
-          const removedExamIds = new Set(s.exams.filter((e) => e.classId === classId).map((e) => e.id))
-          return {
-            classes: s.classes.filter((c) => c.id !== classId),
-            students: s.students.filter((st) => st.classId !== classId),
-            exams: s.exams.filter((e) => e.classId !== classId),
-            submissions: s.submissions.filter((sub) => !removedExamIds.has(sub.examId))
-          }
-        })
-      },
-
-      importStudentsForClass: (classId, rows) => {
-        const cleaned = rows
-          .map((r) => ({
-            name: r.name.trim(),
-            studentCode: r.studentCode?.trim() || undefined,
-            hocLuc: r.hocLuc?.trim() || undefined,
-            notes: r.notes?.trim() || undefined
-          }))
-          .filter((r) => r.name.length > 0)
-
-        set((s) => {
-          const keep = s.students.filter((st) => st.classId !== classId)
-          const next: Student[] = [...keep]
-          for (const r of cleaned) {
-            next.push({
-              id: uid('student'),
-              classId,
-              name: r.name,
-              studentCode: r.studentCode,
-              hocLuc: r.hocLuc,
-              tags: [],
-              notes: r.notes ?? '',
-              customRules: []
-            })
-          }
-          return { students: next }
-        })
-      },
-
-      createExam: (input) => {
-        const id = uid('exam')
-        const exam: Exam = { id, ...input }
-        set((s) => ({ exams: [...s.exams, exam], selectedExamId: id }))
-        return id
-      },
-
-      updateExam: (examId, patch) => {
-        set((s) => ({
-          exams: s.exams.map((e) => (e.id === examId ? { ...e, ...patch } : e))
-        }))
-      },
-
-      deleteExam: (examId) => {
-        set((s) => ({
-          exams: s.exams.filter((e) => e.id !== examId),
-          submissions: s.submissions.filter((sub) => sub.examId !== examId),
-          selectedExamId: s.selectedExamId === examId ? undefined : s.selectedExamId
-        }))
-      },
-
-      cloneExam: (examId) => {
-        const ex = get().exams.find((e) => e.id === examId)
-        if (!ex) throw new Error('Không tìm thấy bài kiểm tra')
-        const id = uid('exam')
-        const titleBase = ex.title.trim()
-        const copy: Exam = {
-          ...ex,
-          id,
-          title: `${titleBase}${titleBase ? ' ' : ''}(bản sao)`
-        }
-        set((s) => ({ exams: [...s.exams, copy], selectedExamId: id }))
-        return id
-      },
-
-      createSubmission: ({ examId, studentId }) => {
-        const exam = get().exams.find((e) => e.id === examId)
-        const student = get().students.find((st) => st.id === studentId)
-        if (!exam || !student) throw new Error('Không tìm thấy bài hoặc học sinh')
-        if (student.classId !== exam.classId) throw new Error('Học sinh không thuộc lớp của bài kiểm tra')
-
-        const id = uid('submission')
-        const submission: Submission = {
-          id,
-          examId,
-          studentId,
-          studentName: student.name,
-          imageFiles: [],
-          ocrPages: []
-        }
-        set((s) => ({ submissions: [...s.submissions, submission], selectedSubmissionId: id }))
-        return id
-      },
-
-      setSubmissionImages: (submissionId, files) => {
-        set((s) => ({
-          submissions: s.submissions.map((sub) => {
-            if (sub.id !== submissionId) return sub
-            return { ...sub, imageFiles: files, ocrPages: [], gradingResult: undefined }
-          })
-        }))
-      },
-
-      replaceSubmissionOcrPages: (submissionId, pages) => {
-        set((s) => ({
-          submissions: s.submissions.map((sub) => {
-            if (sub.id !== submissionId) return sub
-            const ocrPages = pages.map((p) => ({
-              id: uid('ocr'),
-              imageName: p.imageName,
-              ocrText: p.ocrText,
-              confidence: p.confidence,
-              correctedText: p.correctedText
-            }))
-            return { ...sub, ocrPages }
-          })
-        }))
-      },
-
-      setOcrPageCorrectedText: (submissionId, pageId, correctedText) => {
-        set((s) => ({
-          submissions: s.submissions.map((sub) => {
-            if (sub.id !== submissionId) return sub
-            return {
-              ...sub,
-              ocrPages: sub.ocrPages.map((p) => (p.id === pageId ? { ...p, correctedText } : p))
-            }
-          })
-        }))
-      },
-
-      setGradingResult: (submissionId, result) => {
-        set((s) => ({
-          submissions: s.submissions.map((sub) => (sub.id === submissionId ? { ...sub, gradingResult: result } : sub))
-        }))
-      }
-    }),
-    {
-      name: 'jungedu_app_state_v1',
-      version: 4,
-      migrate: (persisted: unknown, fromVersion: number) => {
-        let state = persisted as Record<string, unknown> | undefined
-        if (!state || typeof state !== 'object') return persisted as never
-
-        if (fromVersion < 2) {
-          state = migrateToV2(state)
-        }
-        if (fromVersion < 3) {
-          state = migrateRemoveDefaultClass(state)
-        }
-        if (fromVersion < 4) {
-          state = migrateV4RenameLegacyClassTitles(state)
-        }
-        return state as typeof persisted
-      }
+    for (const r of cleaned) {
+      const id = uid('student')
+      batch.set(doc(db, 'students', id), cleanData({
+        id,
+        classId,
+        name: r.name,
+        studentCode: r.studentCode,
+        hocLuc: r.hocLuc,
+        tags: [],
+        notes: r.notes ?? '',
+        customRules: []
+      }))
     }
-  )
-)
+    await batch.commit()
+  },
+
+  createExam: async (input) => {
+    const id = uid('exam')
+    const exam: Exam = { id, ...input }
+    await setDoc(doc(db, 'exams', id), cleanData(exam))
+    set({ selectedExamId: id })
+    return id
+  },
+
+  updateExam: async (examId, patch) => {
+    await setDoc(doc(db, 'exams', examId), cleanData(patch), { merge: true })
+  },
+
+  deleteExam: async (examId) => {
+    const batch = writeBatch(db)
+    batch.delete(doc(db, 'exams', examId))
+    get().submissions.filter(sub => sub.examId === examId).forEach(sub => {
+      batch.delete(doc(db, 'submissions', sub.id))
+    })
+    await batch.commit()
+  },
+
+  cloneExam: async (examId) => {
+    const ex = get().exams.find((e) => e.id === examId)
+    if (!ex) throw new Error('Không tìm thấy bài kiểm tra')
+    const id = uid('exam')
+    const titleBase = ex.title.trim()
+    const copy: Exam = {
+      ...ex,
+      id,
+      title: `${titleBase}${titleBase ? ' ' : ''}(bản sao)`
+    }
+    await setDoc(doc(db, 'exams', id), cleanData(copy))
+    set({ selectedExamId: id })
+    return id
+  },
+
+  createSubmission: async ({ examId, studentId }) => {
+    const exam = get().exams.find((e) => e.id === examId)
+    const student = get().students.find((st) => st.id === studentId)
+    if (!exam || !student) throw new Error('Không tìm thấy bài hoặc học sinh')
+    if (student.classId !== exam.classId) throw new Error('Học sinh không thuộc lớp của bài kiểm tra')
+
+    const id = uid('submission')
+    const submission: Submission = {
+      id,
+      examId,
+      studentId,
+      studentName: student.name,
+      imageFiles: [],
+      ocrPages: []
+    }
+    await setDoc(doc(db, 'submissions', id), cleanData(submission))
+    set({ selectedSubmissionId: id })
+    return id
+  },
+
+  setSubmissionImages: async (submissionId, files) => {
+    const sub = get().submissions.find(s => s.id === submissionId)
+    if (!sub) return
+
+    // Optimistic UI update
+    set((state) => ({
+      submissions: state.submissions.map((s) => 
+        s.id === submissionId ? { ...s, imageFiles: files, ocrPages: [], gradingResult: undefined } : s
+      )
+    }))
+
+    // Upload files to Firebase Storage first if they are dataUrls (base64)
+    const uploadedFiles = await Promise.all(files.map(async (file) => {
+      if (file.dataUrl.startsWith('http')) {
+        return file
+      }
+      try {
+        const storageRef = ref(storage, `submissions/${submissionId}/${file.id}.jpg`)
+        await uploadString(storageRef, file.dataUrl, 'data_url')
+        const downloadUrl = await getDownloadURL(storageRef)
+        return {
+          ...file,
+          dataUrl: downloadUrl // Replace base64 with Firebase Storage URL
+        }
+      } catch (err) {
+        console.error("Failed to upload image to Firebase Storage, falling back to base64", err)
+        return file
+      }
+    }))
+
+    const updated = {
+      imageFiles: uploadedFiles,
+      ocrPages: [],
+      gradingResult: null
+    }
+    
+    await setDoc(doc(db, 'submissions', submissionId), cleanData(updated), { merge: true })
+  },
+
+  replaceSubmissionOcrPages: async (submissionId, pages) => {
+    const ocrPages = pages.map((p) => ({
+      id: uid('ocr'),
+      imageName: p.imageName,
+      ocrText: p.ocrText,
+      confidence: p.confidence,
+      correctedText: p.correctedText
+    }))
+    await setDoc(doc(db, 'submissions', submissionId), cleanData({ ocrPages }), { merge: true })
+  },
+
+  setOcrPageCorrectedText: async (submissionId, pageId, correctedText) => {
+    const sub = get().submissions.find((s) => s.id === submissionId)
+    if (!sub) return
+    const ocrPages = sub.ocrPages.map((p) => (p.id === pageId ? { ...p, correctedText } : p))
+    await setDoc(doc(db, 'submissions', submissionId), cleanData({ ocrPages }), { merge: true })
+  },
+
+  setGradingResult: async (submissionId, result) => {
+    await setDoc(doc(db, 'submissions', submissionId), cleanData({ gradingResult: result }), { merge: true })
+  }
+}))
+
+export function initFirebaseSync() {
+  onSnapshot(collection(db, 'classes'), (snap) => {
+    useAppStore.setState({ classes: snap.docs.map(d => d.data() as SchoolClass) })
+  })
+
+  onSnapshot(collection(db, 'students'), (snap) => {
+    useAppStore.setState({ students: snap.docs.map(d => d.data() as Student) })
+  })
+
+  onSnapshot(collection(db, 'exams'), (snap) => {
+    useAppStore.setState({ exams: snap.docs.map(d => d.data() as Exam) })
+  })
+
+  onSnapshot(collection(db, 'submissions'), (snap) => {
+    const submissions = snap.docs.map(d => {
+      const data = d.data() as any
+      if (data.gradingResult === null) data.gradingResult = undefined
+      return data as Submission
+    })
+    useAppStore.setState({ submissions, isSyncing: false })
+  })
+}

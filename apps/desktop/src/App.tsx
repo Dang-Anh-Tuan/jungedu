@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import AppLayout from './layouts/AppLayout'
 import DashboardPage from './pages/DashboardPage'
 import ClassesPage from './pages/ClassesPage'
+import ExamsPage from './pages/ExamsPage'
 import CreateExamPage from './pages/CreateExamPage'
 import EditExamPage from './pages/EditExamPage'
 import SubmissionImportPage from './pages/SubmissionImportPage'
@@ -27,6 +28,7 @@ export default function App() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/classes" element={<ClassesPage />} />
+        <Route path="/exams" element={<ExamsPage />} />
         <Route path="/exams/new" element={<CreateExamPage />} />
         <Route path="/exams/:examId/edit" element={<EditExamPage />} />
         <Route path="/exams/:examId/submissions/new" element={<SubmissionImportPage />} />

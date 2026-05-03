@@ -5,7 +5,7 @@ import { Toaster } from 'sonner'
 const nav = [
   { to: '/', label: 'Trang chủ' },
   { to: '/classes', label: 'Lớp' },
-  { to: '/exams/new', label: 'Tạo bài kiểm tra' }
+  { to: '/exams', label: 'Bài kiểm tra' }
 ]
 
 export default function AppLayout() {

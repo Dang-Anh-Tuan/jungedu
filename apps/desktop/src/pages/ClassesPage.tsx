@@ -78,7 +78,7 @@ export default function ClassesPage() {
     if (!name) return
     setBusy(true)
     try {
-      const id = createClass({
+      const id = await createClass({
         name,
         grade: newGrade === '' ? undefined : Number(newGrade)
       })
