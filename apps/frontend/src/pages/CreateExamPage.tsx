@@ -33,6 +33,8 @@ export default function CreateExamPage() {
     presentation: 2
   })
 
+  const [saving, setSaving] = useState(false)
+
   const totalRubric = useMemo(
     () => rubric.content + rubric.grammar + rubric.creativity + rubric.presentation,
     [rubric]
@@ -40,20 +42,26 @@ export default function CreateExamPage() {
 
   const selectedClass = classes.find((c) => c.id === classId)
 
-  function onCreateExam() {
-    if (!classId || classes.length === 0) return
-    const examId = createExam({
-      classId,
-      title: title.trim(),
-      subject: subject.trim(),
-      grade: Number(grade),
-      requirements: requirements.trim(),
-      rubric,
-      teacherStyle
-    })
-
-    toast.success('Đã tạo bài kiểm tra.')
-    navigate(`/exams/${examId}/submissions/new`)
+  async function onCreateExam() {
+    if (!classId || classes.length === 0 || saving) return
+    setSaving(true)
+    try {
+      const examId = await createExam({
+        classId,
+        title: title.trim(),
+        subject: subject.trim(),
+        grade: Number(grade),
+        requirements: requirements.trim(),
+        rubric,
+        teacherStyle
+      })
+      toast.success('Đã tạo bài kiểm tra.')
+      navigate(`/exams/${examId}/submissions/new`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không tạo được bài kiểm tra.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -196,10 +204,10 @@ export default function CreateExamPage() {
             <button
               type="button"
               className="rounded-xl bg-emerald-600 text-white px-6 py-2.5 font-medium shadow-sm hover:bg-emerald-700 disabled:opacity-40"
-              onClick={onCreateExam}
-              disabled={!title.trim() || !classId}
+              onClick={() => void onCreateExam()}
+              disabled={!title.trim() || !classId || saving}
             >
-              Tạo bài & nhập bài làm
+              {saving ? 'Đang lưu…' : 'Tạo bài & nhập bài làm'}
             </button>
           </div>
         </>

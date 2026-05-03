@@ -1,9 +1,5 @@
 import { z } from 'zod'
 
-export const CleanupSchema = z.object({
-  correctedText: z.string()
-})
-
 export const GradingRubricSchema = z.object({
   content: z.number(),
   grammar: z.number(),

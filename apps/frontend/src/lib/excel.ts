@@ -9,11 +9,21 @@ export type ParsedStudentRow = {
 
 /** Sheet đầu tiên; nhận diện cột theo dòng tiêu đề (hoặc cột A/B nếu không có tiêu đề). */
 export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
-  const wb = XLSX.read(file, { type: 'array' })
+  let wb: ReturnType<typeof XLSX.read>
+  try {
+    wb = XLSX.read(file, { type: 'array' })
+  } catch {
+    throw new Error('INVALID_XLSX')
+  }
   const sheetName = wb.SheetNames[0]
   if (!sheetName) return []
   const sheet = wb.Sheets[sheetName]
-  const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false }) as string[][]
+  const rows = XLSX.utils.sheet_to_json<string[]>(sheet, {
+    header: 1,
+    raw: false,
+    blankrows: false,
+    defval: ''
+  }) as string[][]
   if (!rows.length) return []
 
   const header = (rows[0] ?? []).map((c) => String(c ?? '').trim().toLowerCase())
@@ -25,6 +35,9 @@ export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
 
   for (let i = 0; i < header.length; i++) {
     const h = header[i]
+    if (/^stt$|^số\s*tt|^tt$|^no\.?$/.test(h)) {
+      continue
+    }
     if (/mã\s*học\s*sinh|^mã\s*hs$|^ma\s*hs$/.test(h) || (/^(mã|ma|code)$/.test(h) && !/tên/.test(h))) {
       codeCol = i
       continue
@@ -44,7 +57,7 @@ export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
   }
 
   const headerLooksLikeLabels = header.some((h) =>
-    /tên|ten|họ|mã|ma|học\s*lực|ghi\s*chú|note/.test(h)
+    /tên|ten|họ|mã|ma|học\s*lực|ghi\s*chú|note|^stt$|^tt$|số\s*tt/.test(h)
   )
   const startRow = headerLooksLikeLabels ? 1 : 0
 

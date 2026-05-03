@@ -1,24 +1,24 @@
 import { create } from 'zustand'
-import { collection, doc, setDoc, deleteDoc, onSnapshot, writeBatch } from 'firebase/firestore'
-import { ref, uploadString, getDownloadURL } from 'firebase/storage'
-import { db, storage } from '../lib/firebase'
-import type { Exam, GradingResult, SchoolClass, Submission, Student } from '../types'
-
-function uid(prefix: string) {
-  return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`
-}
-
-function cleanData<T>(obj: T): T {
-  if (obj === null || typeof obj !== 'object') return obj
-  if (Array.isArray(obj)) return obj.map(cleanData) as unknown as T
-  const copy: any = {}
-  for (const key in obj) {
-    if ((obj as any)[key] !== undefined) {
-      copy[key] = cleanData((obj as any)[key])
-    }
-  }
-  return copy as T
-}
+import type { Exam, GradingResult, SchoolClass, Submission, Student, SubmissionImageFile } from '../types'
+import {
+  batchReplaceStudentsForClassDocs,
+  createDocumentId,
+  deleteClassCascadeDocs,
+  deleteExamAndSubmissionsDocs,
+  mergeExamDocPatch,
+  mergeSubmissionDoc,
+  setExamDoc,
+  setSchoolClassDoc,
+  setSubmissionDoc,
+  stripImageFilesForFirestore
+} from '../services/firebase'
+import {
+  cleanupRemovedSubmissionImages,
+  persistUploadedSubmissionImages,
+  purgeDriveSubmissionImages,
+  purgeLocalSubmissionImageFiles,
+  revokeSubmissionImageObjectUrls
+} from '../services/storage/submissionImagePersistence'
 
 type AppState = {
   isSyncing: boolean
@@ -43,10 +43,7 @@ type AppState = {
   cloneExam: (examId: string) => Promise<string>
 
   createSubmission: (input: { examId: string; studentId: string }) => Promise<string>
-  setSubmissionImages: (
-    submissionId: string,
-    files: { id: string; name: string; objectUrl: string; dataUrl: string }[]
-  ) => Promise<void>
+  setSubmissionImages: (submissionId: string, files: SubmissionImageFile[]) => Promise<void>
   replaceSubmissionOcrPages: (
     submissionId: string,
     pages: { imageName: string; ocrText: string; confidence: number; correctedText: string }[]
@@ -64,34 +61,46 @@ export const useAppStore = create<AppState>((set, get) => ({
   submissions: [],
 
   createClass: async (input) => {
-    const id = uid('class')
+    const id = createDocumentId('class')
     const cls: SchoolClass = { id, ...input }
-    await setDoc(doc(db, 'classes', id), cleanData(cls))
+    await setSchoolClassDoc(cls)
     return id
   },
 
   deleteClass: async (classId) => {
-    const batch = writeBatch(db)
-    batch.delete(doc(db, 'classes', classId))
-    
-    // delete students in this class
-    get().students.filter(st => st.classId === classId).forEach(st => {
-      batch.delete(doc(db, 'students', st.id))
-    })
+    const studentIds = get()
+      .students.filter((st) => st.classId === classId)
+      .map((st) => st.id)
 
-    // delete exams and submissions
-    const examsToDelete = get().exams.filter(e => e.classId === classId)
-    examsToDelete.forEach(e => {
-      batch.delete(doc(db, 'exams', e.id))
-      get().submissions.filter(sub => sub.examId === e.id).forEach(sub => {
-        batch.delete(doc(db, 'submissions', sub.id))
-      })
-    })
+    const examsToDelete = get().exams.filter((e) => e.classId === classId)
+    const exams = examsToDelete.map((e) => ({
+      examId: e.id,
+      submissionIds: get()
+        .submissions.filter((sub) => sub.examId === e.id)
+        .map((sub) => sub.id)
+    }))
 
-    await batch.commit()
+    await Promise.all(
+      exams.flatMap((ex) =>
+        ex.submissionIds.map(async (sid) => {
+          const sub = get().submissions.find((s) => s.id === sid)
+          if (sub?.imageFiles?.length) await purgeDriveSubmissionImages(sub.imageFiles)
+          await purgeLocalSubmissionImageFiles(sid)
+        })
+      )
+    )
+
+    await deleteClassCascadeDocs({
+      classId,
+      studentIds,
+      exams
+    })
   },
 
   importStudentsForClass: async (classId, rows) => {
+    const cid = typeof classId === 'string' ? classId.trim() : ''
+    if (!cid) throw new Error('Thiếu mã lớp (classId).')
+
     const cleaned = rows
       .map((r) => ({
         name: r.name.trim(),
@@ -101,62 +110,69 @@ export const useAppStore = create<AppState>((set, get) => ({
       }))
       .filter((r) => r.name.length > 0)
 
-    const batch = writeBatch(db)
-    
-    // Remove existing students for this class
-    get().students.filter(st => st.classId === classId).forEach(st => {
-      batch.delete(doc(db, 'students', st.id))
-    })
+    const studentIdsToRemove = get()
+      .students.filter((st) => st.classId === cid)
+      .map((st) => st.id)
 
-    for (const r of cleaned) {
-      const id = uid('student')
-      batch.set(doc(db, 'students', id), cleanData({
-        id,
-        classId,
-        name: r.name,
-        studentCode: r.studentCode,
-        hocLuc: r.hocLuc,
-        tags: [],
-        notes: r.notes ?? '',
-        customRules: []
-      }))
-    }
-    await batch.commit()
+    const studentsToUpsert: Student[] = cleaned.map((r) => ({
+      id: createDocumentId('student'),
+      classId: cid,
+      name: r.name,
+      studentCode: r.studentCode,
+      hocLuc: r.hocLuc,
+      tags: [],
+      notes: r.notes ?? '',
+      customRules: []
+    }))
+
+    await batchReplaceStudentsForClassDocs({
+      studentIdsToRemove,
+      studentsToUpsert
+    })
   },
 
   createExam: async (input) => {
-    const id = uid('exam')
+    const id = createDocumentId('exam')
     const exam: Exam = { id, ...input }
-    await setDoc(doc(db, 'exams', id), cleanData(exam))
-    set({ selectedExamId: id })
+    await setExamDoc(exam)
+    set((state) => ({
+      exams: [...state.exams.filter((e) => e.id !== id), exam],
+      selectedExamId: id
+    }))
     return id
   },
 
   updateExam: async (examId, patch) => {
-    await setDoc(doc(db, 'exams', examId), cleanData(patch), { merge: true })
+    await mergeExamDocPatch(examId, patch as Record<string, unknown>)
   },
 
   deleteExam: async (examId) => {
-    const batch = writeBatch(db)
-    batch.delete(doc(db, 'exams', examId))
-    get().submissions.filter(sub => sub.examId === examId).forEach(sub => {
-      batch.delete(doc(db, 'submissions', sub.id))
-    })
-    await batch.commit()
+    const subs = get().submissions.filter((sub) => sub.examId === examId)
+    const submissionIds = subs.map((sub) => sub.id)
+    await Promise.all(
+      subs.map(async (sub) => {
+        await purgeDriveSubmissionImages(sub.imageFiles)
+        await purgeLocalSubmissionImageFiles(sub.id)
+      })
+    )
+    await deleteExamAndSubmissionsDocs(examId, submissionIds)
   },
 
   cloneExam: async (examId) => {
     const ex = get().exams.find((e) => e.id === examId)
     if (!ex) throw new Error('Không tìm thấy bài kiểm tra')
-    const id = uid('exam')
+    const id = createDocumentId('exam')
     const titleBase = ex.title.trim()
     const copy: Exam = {
       ...ex,
       id,
       title: `${titleBase}${titleBase ? ' ' : ''}(bản sao)`
     }
-    await setDoc(doc(db, 'exams', id), cleanData(copy))
-    set({ selectedExamId: id })
+    await setExamDoc(copy)
+    set((state) => ({
+      exams: [...state.exams.filter((e) => e.id !== id), copy],
+      selectedExamId: id
+    }))
     return id
   },
 
@@ -166,7 +182,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!exam || !student) throw new Error('Không tìm thấy bài hoặc học sinh')
     if (student.classId !== exam.classId) throw new Error('Học sinh không thuộc lớp của bài kiểm tra')
 
-    const id = uid('submission')
+    const id = createDocumentId('submission')
     const submission: Submission = {
       id,
       examId,
@@ -175,92 +191,111 @@ export const useAppStore = create<AppState>((set, get) => ({
       imageFiles: [],
       ocrPages: []
     }
-    await setDoc(doc(db, 'submissions', id), cleanData(submission))
-    set({ selectedSubmissionId: id })
+    await setSubmissionDoc(submission)
+    set((state) => ({
+      submissions: [...state.submissions.filter((s) => s.id !== id), submission],
+      selectedSubmissionId: id
+    }))
     return id
   },
 
   setSubmissionImages: async (submissionId, files) => {
-    const sub = get().submissions.find(s => s.id === submissionId)
+    const sub = get().submissions.find((s) => s.id === submissionId)
     if (!sub) return
 
-    // Optimistic UI update
+    const before = { ...sub }
+
+    await cleanupRemovedSubmissionImages(sub.imageFiles, files)
+
     set((state) => ({
-      submissions: state.submissions.map((s) => 
+      submissions: state.submissions.map((s) =>
         s.id === submissionId ? { ...s, imageFiles: files, ocrPages: [], gradingResult: undefined } : s
       )
     }))
 
-    // Upload files to Firebase Storage first if they are dataUrls (base64)
-    const uploadedFiles = await Promise.all(files.map(async (file) => {
-      if (file.dataUrl.startsWith('http')) {
-        return file
-      }
-      try {
-        const storageRef = ref(storage, `submissions/${submissionId}/${file.id}.jpg`)
-        await uploadString(storageRef, file.dataUrl, 'data_url')
-        const downloadUrl = await getDownloadURL(storageRef)
-        return {
-          ...file,
-          dataUrl: downloadUrl // Replace base64 with Firebase Storage URL
-        }
-      } catch (err) {
-        console.error("Failed to upload image to Firebase Storage, falling back to base64", err)
-        return file
-      }
-    }))
+    try {
+      const uploadedFiles = await persistUploadedSubmissionImages(submissionId, files)
 
-    const updated = {
-      imageFiles: uploadedFiles,
-      ocrPages: [],
-      gradingResult: null
+      for (const f of files) {
+        revokeSubmissionImageObjectUrls(f)
+      }
+
+      set((state) => ({
+        submissions: state.submissions.map((s) =>
+          s.id === submissionId ? { ...s, imageFiles: uploadedFiles } : s
+        )
+      }))
+
+      await mergeSubmissionDoc(submissionId, {
+        imageFiles: stripImageFilesForFirestore(uploadedFiles),
+        ocrPages: [],
+        gradingResult: null,
+        visionConvertedAt: null,
+        gradedAt: null,
+        teacherRevisedAt: null
+      })
+    } catch (e) {
+      set((state) => ({
+        submissions: state.submissions.map((s) => (s.id === submissionId ? before : s))
+      }))
+      throw e
     }
-    
-    await setDoc(doc(db, 'submissions', submissionId), cleanData(updated), { merge: true })
   },
 
   replaceSubmissionOcrPages: async (submissionId, pages) => {
+    const sub = get().submissions.find((s) => s.id === submissionId)
+    if (!sub) return
+
+    const now = new Date().toISOString()
     const ocrPages = pages.map((p) => ({
-      id: uid('ocr'),
+      id: createDocumentId('ocr'),
       imageName: p.imageName,
       ocrText: p.ocrText,
       confidence: p.confidence,
       correctedText: p.correctedText
     }))
-    await setDoc(doc(db, 'submissions', submissionId), cleanData({ ocrPages }), { merge: true })
+    /** Luôn ghi lại imageFiles cùng OCR — tránh snapshot ghi đè làm mất ảnh trên UI / Firestore. */
+    await mergeSubmissionDoc(submissionId, {
+      imageFiles: stripImageFilesForFirestore(sub.imageFiles),
+      ocrPages,
+      visionConvertedAt: now,
+      gradedAt: null,
+      gradingResult: null
+    })
+
+    set((state) => ({
+      submissions: state.submissions.map((s) =>
+        s.id === submissionId
+          ? { ...s, ocrPages, visionConvertedAt: now, gradingResult: undefined }
+          : s
+      )
+    }))
   },
 
   setOcrPageCorrectedText: async (submissionId, pageId, correctedText) => {
     const sub = get().submissions.find((s) => s.id === submissionId)
     if (!sub) return
     const ocrPages = sub.ocrPages.map((p) => (p.id === pageId ? { ...p, correctedText } : p))
-    await setDoc(doc(db, 'submissions', submissionId), cleanData({ ocrPages }), { merge: true })
+    const now = new Date().toISOString()
+    await mergeSubmissionDoc(submissionId, {
+      imageFiles: stripImageFilesForFirestore(sub.imageFiles),
+      ocrPages,
+      teacherRevisedAt: now
+    })
   },
 
   setGradingResult: async (submissionId, result) => {
-    await setDoc(doc(db, 'submissions', submissionId), cleanData({ gradingResult: result }), { merge: true })
+    const sub = get().submissions.find((s) => s.id === submissionId)
+    const now = new Date().toISOString()
+    await mergeSubmissionDoc(submissionId, {
+      ...(sub ? { imageFiles: stripImageFilesForFirestore(sub.imageFiles) } : {}),
+      gradingResult: result,
+      gradedAt: now
+    })
+    set((state) => ({
+      submissions: state.submissions.map((s) =>
+        s.id === submissionId ? { ...s, gradingResult: result, gradedAt: now } : s
+      )
+    }))
   }
 }))
-
-export function initFirebaseSync() {
-  onSnapshot(collection(db, 'classes'), (snap) => {
-    useAppStore.setState({ classes: snap.docs.map(d => d.data() as SchoolClass) })
-  })
-
-  onSnapshot(collection(db, 'students'), (snap) => {
-    useAppStore.setState({ students: snap.docs.map(d => d.data() as Student) })
-  })
-
-  onSnapshot(collection(db, 'exams'), (snap) => {
-    useAppStore.setState({ exams: snap.docs.map(d => d.data() as Exam) })
-  })
-
-  onSnapshot(collection(db, 'submissions'), (snap) => {
-    const submissions = snap.docs.map(d => {
-      const data = d.data() as any
-      if (data.gradingResult === null) data.gradingResult = undefined
-      return data as Submission
-    })
-    useAppStore.setState({ submissions, isSyncing: false })
-  })
-}

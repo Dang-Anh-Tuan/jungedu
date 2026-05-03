@@ -1,92 +1,34 @@
 import type { Exam, GradingResult, Student } from '../../types'
-import {
-  CleanupSchema,
-  GradingMistakeSchema,
-  GradingResultSchema
-} from './schemas'
+import { GradingMistakeSchema, GradingResultSchema } from './schemas'
 import { callPuterJson } from './puterJson'
-import { PUTER_CLEANUP_MODEL, PUTER_GRADING_MODEL } from '../config'
+import { PUTER_GRADING_MODEL } from '../config'
 
 export type GradePipelineRequest = {
-  ocrText: string
+  /**
+   * Toàn bộ bài làm dùng để chấm: là **correctedText** của từng trang OCR đã nối (bản đối chiếu / đã sửa tay).
+   * Không qua thêm bước “lành OCR” — tránh lệch khỏi văn bản giáo viên đang xem.
+   */
+  essayText: string
   exam: Pick<Exam, 'requirements' | 'rubric' | 'title' | 'subject' | 'grade' | 'teacherStyle'>
   student: Pick<Student, 'customRules' | 'tags' | 'notes' | 'name' | 'hocLuc'>
 }
 
-/** Hai bước như pipeline Express cũ: lành OCR → chấm rubric JSON (qua Puter). */
+/** Chấm rubric JSON qua Puter trực tiếp trên `essayText` (bản đã hiệu đính). */
 export async function gradeEssayPipeline(req: GradePipelineRequest): Promise<GradingResult> {
-  const corrected = await cleanupOcrText({
-    ocrText: req.ocrText,
+  const body = req.essayText.trim()
+  return gradeWithRubric({
+    essayBody: body,
     exam: req.exam,
     student: req.student
-  })
-
-  const grading = await gradeWithRubric({
-    correctedText: corrected.correctedText,
-    exam: req.exam,
-    student: req.student
-  })
-
-  return grading
-}
-
-async function cleanupOcrText({
-  ocrText,
-  exam,
-  student
-}: {
-  ocrText: string
-  exam: Pick<Exam, 'requirements'>
-  student: Pick<Student, 'name' | 'customRules' | 'notes' | 'hocLuc'>
-}): Promise<{ correctedText: string }> {
-  const messages = [
-    {
-      role: 'system' as const,
-      content:
-        'Bạn là trợ lý sư phạm tiếng Việt. Nhiệm vụ: sửa lỗi OCR nhưng KHÔNG được viết lại/đổi ý của học sinh. Chỉ sửa các sai chính tả/nhận dạng bất hợp lý do OCR (sai dấu, thiếu/nhầm chữ) để khôi phục văn bản tự nhiên nhất.\n' +
-        'Quy tắc MUST NOT: không cải thiện nội dung, không thêm ý mới, không đổi văn phong học sinh, không “viết hay hơn”.'
-    },
-    {
-      role: 'user' as const,
-      content:
-        JSON.stringify(
-          {
-            sharedRules: [
-              'Sửa lỗi chính tả do OCR',
-              'Giữ nguyên cấu trúc câu/ý định của học sinh',
-              'Chỉ chỉnh khi chắc chắn đó là lỗi OCR'
-            ],
-            examRequirements: exam.requirements,
-            studentContext: {
-              name: student.name,
-              customRules: student.customRules ?? [],
-              notes: student.notes ?? '',
-              hocLuc: student.hocLuc ?? ''
-            },
-            ocrRawText: ocrText
-          },
-          null,
-          2
-        ) +
-        '\n\nOUTPUT JSON (bắt buộc, KHÔNG thêm key):' +
-        '\n{ "correctedText": string }'
-    }
-  ]
-
-  return await callPuterJson({
-    messages,
-    schema: CleanupSchema,
-    model: PUTER_CLEANUP_MODEL,
-    temperature: 0
   })
 }
 
 async function gradeWithRubric({
-  correctedText,
+  essayBody,
   exam,
   student
 }: {
-  correctedText: string
+  essayBody: string
   exam: Pick<Exam, 'title' | 'subject' | 'grade' | 'requirements' | 'rubric' | 'teacherStyle'>
   student: Pick<Student, 'name' | 'tags' | 'notes' | 'customRules' | 'hocLuc'>
 }): Promise<GradingResult> {
@@ -97,8 +39,9 @@ async function gradeWithRubric({
         'Bạn là giáo viên Tiếng Việt cấp tiểu học. Chấm bài văn theo rubric. Trả JSON hợp lệ.\n' +
         'Giữ tone theo teacherStyle.\n' +
         'Điểm tổng quy về thang 10 (có thể có số lẻ 0.5).\n' +
+        'Trường `essay` trong input là bản bài làm **đã đối chiếu/hiệu đính** (không phải OCR thô). Chấm và trích dẫn lỗi **chỉ** trên đúng chuỗi ký tự đó.\n' +
         'Không bịa lỗi: chỉ nêu những lỗi có cơ sở từ bài làm.\n' +
-        'QUAN TRỌNG TUYỆT ĐỐI: Trường `original` trong danh sách lỗi BẮT BUỘC phải COPY Y HỆT 100% từ bài làm (essay). Cấm được tự ý sửa lỗi chính tả, cấm paraphrase, cấm tóm tắt. Nếu bạn paraphrase, hệ thống sẽ bị lỗi!'
+        'QUAN TRỌNG TUYỆT ĐỐI: Trường `original` trong danh sách lỗi BẮT BUỘC phải COPY Y HỆT 100% từ `essay`. Cấm paraphrase, cấm tóm tắt, cấm trích đoạn không nằm trong essay.'
     },
     {
       role: 'user' as const,
@@ -107,7 +50,7 @@ async function gradeWithRubric({
           {
             globalRules: [
               'Ưu tiên nhận xét động viên (nếu teacherStyle = encouraging)',
-              'Chỉ ra lỗi chính tả/ngữ pháp/lặp từ nếu có dấu hiệu rõ',
+              'Chỉ ra lỗi chính tả/ngữ pháp/lặp từ nếu có dấu hiệu rõ trong essay',
               'Giữ văn phong học sinh; gợi ý thay đổi theo hướng phù hợp lứa tuổi',
               'Nếu studentContext có hocLuc hoặc notes, dùng làm ngữ cảnh kỳ vọng/nhận xét (vd học sinh giỏi — tiêu chí có thể khắt khe hơn một chút khi phù hợp)'
             ],
@@ -126,7 +69,7 @@ async function gradeWithRubric({
               customRules: student.customRules ?? [],
               hocLuc: student.hocLuc ?? ''
             },
-            essay: correctedText
+            essay: essayBody
           },
           null,
           2

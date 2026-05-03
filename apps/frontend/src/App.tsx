@@ -10,6 +10,7 @@ import SubmissionImportPage from './pages/SubmissionImportPage'
 import OcrConfirmPage from './pages/OcrConfirmPage'
 import GradingPage from './pages/GradingPage'
 import ReviewPage from './pages/ReviewPage'
+import ProfilePage from './pages/ProfilePage'
 
 function RedirectLegacySuaBai() {
   const { submissionId } = useParams()
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="/submissions/:submissionId/ocr-confirm" element={<RedirectLegacySuaBai />} />
         <Route path="/submissions/:submissionId/grading" element={<GradingPage />} />
         <Route path="/submissions/:submissionId/review" element={<ReviewPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

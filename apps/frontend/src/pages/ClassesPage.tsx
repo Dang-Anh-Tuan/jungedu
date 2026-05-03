@@ -59,15 +59,21 @@ export default function ClassesPage() {
 
   async function importExcelForClass(classId: string, file: File | null): Promise<boolean> {
     if (!file) return false
-    const buf = await file.arrayBuffer()
-    const rows = parseExcelToStudentRows(buf)
+    let rows: ReturnType<typeof parseExcelToStudentRows>
+    try {
+      const buf = await file.arrayBuffer()
+      rows = parseExcelToStudentRows(buf)
+    } catch {
+      toast.error('Không đọc được file Excel/CSV. Thử định dạng .xlsx hoặc kiểm tra file không bị khóa/mật khẩu.')
+      return false
+    }
     if (rows.length === 0) {
       toast.error(
         'Không đọc được dòng nào. Kiểm tra sheet đầu: dòng 1 là tiêu đề cột, có ít nhất cột «Họ và tên» (hoặc «Họ tên»).'
       )
       return false
     }
-    importStudentsForClass(classId, rows)
+    await importStudentsForClass(classId, rows)
     toast.success(`Đã cập nhật danh sách: ${rows.length} học sinh (thay toàn bộ).`)
     return true
   }
@@ -76,6 +82,8 @@ export default function ClassesPage() {
     e.preventDefault()
     const name = newClassName.trim()
     if (!name) return
+    /** Giữ File trước mọi await — sau await một số trình duyệt có thể làm mất chọn file trong input. */
+    const excelFileEarly = createFileRef.current?.files?.[0] ?? null
     setBusy(true)
     try {
       const id = await createClass({
@@ -86,11 +94,10 @@ export default function ClassesPage() {
       setNewClassName('')
       setNewGrade('')
 
-      const file = createFileRef.current?.files?.[0] ?? null
       if (createFileRef.current) createFileRef.current.value = ''
 
-      if (file) {
-        await importExcelForClass(id, file)
+      if (excelFileEarly) {
+        await importExcelForClass(id, excelFileEarly)
       } else {
         toast.success('Đã tạo lớp. Bạn có thể nhập Excel ở chi tiết lớp — nút «Cập nhật danh sách».')
       }

@@ -3,7 +3,7 @@ import type { Exam, GradingResult, Student } from '../types'
 import { gradeEssayPipeline } from './grading/pipeline'
 
 type GradeRequest = {
-  ocrText: string
+  essayText: string
   exam: Pick<Exam, 'requirements' | 'rubric' | 'title' | 'subject' | 'grade' | 'teacherStyle'>
   student: Pick<Student, 'customRules' | 'tags' | 'notes' | 'name' | 'hocLuc'>
 }

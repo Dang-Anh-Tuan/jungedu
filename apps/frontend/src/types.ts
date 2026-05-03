@@ -40,10 +40,25 @@ export type Exam = {
 export type OcrPageResult = {
   id: string
   imageName: string
+  /** Chữ trích xuất / “dịch” từ AI Vision (ảnh → văn bản). */
   ocrText: string
   /** Vision AI: -1. Dữ liệu cũ có thể còn điểm 0…1 từ pipeline OCR cục bộ đã gỡ. */
   confidence: number
+  /** Bản giáo viên chỉnh sau đối chiếu (sửa AI). */
   correctedText: string
+}
+
+/** Một ảnh trong bài nộp — Firebase Storage (`firebase`), Google Drive (`gdrive`), hoặc IndexedDB (`local`). */
+export type SubmissionImageFile = {
+  id: string
+  name: string
+  objectUrl: string
+  dataUrl: string
+  storageKind?: 'firebase' | 'local' | 'gdrive'
+  /** Id file Drive khi `storageKind === 'gdrive'` */
+  driveFileId?: string
+  /** Khóa IndexedDB khi `storageKind === 'local'` */
+  localKey?: string
 }
 
 export type Submission = {
@@ -51,9 +66,17 @@ export type Submission = {
   examId: string
   studentId: string
   studentName: string
-  imageFiles: { id: string; name: string; objectUrl: string; dataUrl: string }[]
+  /** Ảnh bài làm (URL Storage / blob / data URL tạm trên client). */
+  imageFiles: SubmissionImageFile[]
   ocrPages: OcrPageResult[]
+  /** Kết quả chấm AI (điểm, nhận xét, rubric…). */
   gradingResult?: GradingResult
+  /** ISO: lần cuối chạy chuyển ảnh → chữ (AI). */
+  visionConvertedAt?: string
+  /** ISO: lần cuối chấm AI. */
+  gradedAt?: string
+  /** ISO: lần cuối GV sửa chữ (đối chiếu / OCR confirm). */
+  teacherRevisedAt?: string
 }
 
 export type GradingRubricBreakdown = ExamRubric

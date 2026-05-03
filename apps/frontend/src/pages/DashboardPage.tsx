@@ -120,13 +120,15 @@ export default function DashboardPage() {
                         type="button"
                         className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
                         onClick={() => {
-                          try {
-                            const nid = cloneExam(exam.id)
-                            toast.success(`Đã nhân bản «${exam.title}».`)
-                            navigate(`/exams/${nid}/edit`)
-                          } catch (e) {
-                            toast.error(e instanceof Error ? e.message : 'Không nhân bản được bài kiểm tra.')
-                          }
+                          void (async () => {
+                            try {
+                              const nid = await cloneExam(exam.id)
+                              toast.success(`Đã nhân bản «${exam.title}».`)
+                              navigate(`/exams/${nid}/edit`)
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : 'Không nhân bản được bài kiểm tra.')
+                            }
+                          })()
                         }}
                       >
                         Nhân bản

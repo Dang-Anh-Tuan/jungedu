@@ -50,7 +50,7 @@ export default function GradingPage() {
     setRunning(true)
     try {
       const result = await runAiGrade({
-        ocrText: combinedText,
+        essayText: combinedText,
         exam: {
           title: exam.title,
           subject: exam.subject,
@@ -68,7 +68,7 @@ export default function GradingPage() {
         }
       })
 
-      setGradingResult(submission.id, result)
+      await setGradingResult(submission.id, result)
       toast.success('Đã có kết quả chấm AI.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { computeDraftVsAiSegments } from '../lib/draftAiDiff'
 import { useAppStore } from '../state/appStore'
 
 export default function OcrConfirmPage() {
@@ -14,6 +15,7 @@ export default function OcrConfirmPage() {
   const selectedPage = ocrPages[selectedPageIndex]
 
   const [draftText, setDraftText] = useState('')
+  const [showAiCompare, setShowAiCompare] = useState(false)
   const draftRef = useRef('')
   draftRef.current = draftText
 
@@ -26,6 +28,11 @@ export default function OcrConfirmPage() {
     if (submission.ocrPages.length === 0) return ''
     return submission.ocrPages.map((p) => p.correctedText).join('\n')
   }, [submission])
+
+  const highlightSegments = useMemo(() => {
+    const ai = selectedPage?.ocrText ?? ''
+    return computeDraftVsAiSegments(ai, draftText)
+  }, [selectedPage?.ocrText, draftText])
 
   const saveDraftNow = useCallback(
     (pageId?: string, text?: string) => {
@@ -144,16 +151,33 @@ export default function OcrConfirmPage() {
                   ảnh sẽ phóng to trong khung cố định nhoaaa~ 🔍
                 </p>
                 {submission.imageFiles[selectedPageIndex] && (
-                  <ShiftWheelZoomImage src={submission.imageFiles[selectedPageIndex].dataUrl} alt={submission.imageFiles[selectedPageIndex].name} />
+                  <ShiftWheelZoomImage
+                    src={
+                      submission.imageFiles[selectedPageIndex].dataUrl ||
+                      submission.imageFiles[selectedPageIndex].objectUrl
+                    }
+                    alt={submission.imageFiles[selectedPageIndex].name}
+                  />
                 )}
               </div>
 
               <div className="lg:col-span-3 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="font-semibold text-slate-800">Chữ đọc được (sửa tay — tự lưu)</div>
-                  <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
-                    ✨ Khi bé nhập nội dung sẽ tự lưu nhoaaaa
-                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedPage ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAiCompare((v) => !v)}
+                        className="text-xs font-medium rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
+                      >
+                        {showAiCompare ? 'Ẩn so sánh với AI' : 'Hiện so sánh với AI'}
+                      </button>
+                    ) : null}
+                    <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
+                      ✨ Khi bé nhập nội dung sẽ tự lưu nhoaaaa
+                    </p>
+                  </div>
                 </div>
 
                 <textarea
@@ -168,6 +192,30 @@ export default function OcrConfirmPage() {
                   }
                   disabled={!selectedPage}
                 />
+
+                {selectedPage && showAiCompare ? (
+                  <div className="rounded-xl border border-red-100 bg-red-50/40 p-3 space-y-2">
+                    <div className="text-xs font-semibold text-red-900">
+                      Đối chiếu với chữ AI —{' '}
+                      <span className="font-normal text-red-800">đoạn nền đỏ là phần khác bản AI đọc được</span>
+                    </div>
+                    <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-800 max-h-[240px] overflow-y-auto rounded-lg bg-white/80 border border-red-100 p-3">
+                      {highlightSegments.length === 0 ? (
+                        <span className="text-slate-400">(Trống)</span>
+                      ) : (
+                        highlightSegments.map((s, idx) =>
+                          s.kind === 'diff' ? (
+                            <mark key={idx} className="bg-red-200 text-red-950 rounded-sm px-0.5">
+                              {s.text}
+                            </mark>
+                          ) : (
+                            <span key={idx}>{s.text}</span>
+                          )
+                        )
+                      )}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="flex flex-wrap justify-end gap-3 items-center">
                   <button

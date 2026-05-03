@@ -4,14 +4,17 @@ import 'react-image-crop/dist/ReactCrop.css'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAppStore } from '../state/appStore'
-import type { Submission, Student } from '../types'
+import type { Submission, Student, SubmissionImageFile } from '../types'
 import { fileToDataUrl } from '../lib/fileDataUrl'
 import { sortFilesNatural } from '../lib/bulkFiles'
 import { runImageToText } from '../services/imageToText'
 import { runAiGrade } from '../services/aiClient'
 import { submissionAiMatchPercent } from '../lib/textSimilarity'
+import { getSubmissionImageStorageMode } from '../services/config'
+import { resolveSubmissionImageWorkUrl } from '../services/storage/submissionImagePersistence'
+import SubmissionImageThumb from '../components/SubmissionImageThumb'
 
-type SelectedFile = { id: string; name: string; dataUrl: string; objectUrl: string }
+type SelectedFile = SubmissionImageFile
 
 function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now()}`
@@ -23,7 +26,7 @@ async function dataUrlToFile(dataUrl: string, fileName: string) {
   return new File([blob], fileName, { type: blob.type || 'image/*' })
 }
 
-function ensureSubmissionId(examId: string, studentId: string): string {
+async function ensureSubmissionId(examId: string, studentId: string): Promise<string> {
   const { submissions, createSubmission } = useAppStore.getState()
   const list = submissions.filter((s) => s.examId === examId && s.studentId === studentId)
   const existing = list.at(-1)
@@ -156,7 +159,6 @@ export default function SubmissionImportPage() {
   const submissions = useAppStore((s) => s.submissions)
   const setSubmissionImages = useAppStore((s) => s.setSubmissionImages)
   const replaceSubmissionOcrPages = useAppStore((s) => s.replaceSubmissionOcrPages)
-  const setGradingResult = useAppStore((s) => s.setGradingResult)
 
   const exam = exams.find((e) => e.id === examId)
 
@@ -201,11 +203,13 @@ export default function SubmissionImportPage() {
           objectUrl: URL.createObjectURL(file)
         })
       }
-      const submissionId = ensureSubmissionId(examId, studentId)
+      const submissionId = await ensureSubmissionId(examId, studentId)
       // Append to existing instead of replace if capturing from camera?
       // Wait, original code replaces. We will keep replace to match input type="file" multiple.
-      setSubmissionImages(submissionId, simplified)
+      await setSubmissionImages(submissionId, simplified)
       toast.success(`Đã lưu ${simplified.length} ảnh.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không lưu được ảnh (kiểm tra Drive / Firebase / Console).')
     } finally {
       setLoadingPick(null)
     }
@@ -216,7 +220,7 @@ export default function SubmissionImportPage() {
     const sid = activeCameraStudentId
     setActiveCameraStudentId(null)
     
-    const subId = ensureSubmissionId(examId, sid)
+    const subId = await ensureSubmissionId(examId, sid)
     const existingSub = submissions.find(s => s.id === subId)
     const existingImages = existingSub?.imageFiles || []
     
@@ -228,8 +232,12 @@ export default function SubmissionImportPage() {
       objectUrl: URL.createObjectURL(file)
     }
     
-    setSubmissionImages(subId, [...existingImages, newImg])
-    toast.success('Đã thêm ảnh vừa chụp.')
+    try {
+      await setSubmissionImages(subId, [...existingImages, newImg])
+      toast.success('Đã thêm ảnh vừa chụp.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không lưu được ảnh.')
+    }
   }
 
   // --- Core API Executions ---
@@ -243,9 +251,15 @@ export default function SubmissionImportPage() {
     try {
       const pages: { imageName: string; ocrText: string; confidence: number; correctedText: string }[] = []
       for (const img of sub.imageFiles) {
-        const file = await dataUrlToFile(img.dataUrl, img.name)
-        const { text, confidence } = await runImageToText(file)
-        pages.push({ imageName: img.name, ocrText: text, confidence, correctedText: text })
+        const { url, revokeWhenDone } = await resolveSubmissionImageWorkUrl(img)
+        if (!url) continue
+        try {
+          const file = await dataUrlToFile(url, img.name)
+          const { text, confidence } = await runImageToText(file)
+          pages.push({ imageName: img.name, ocrText: text, confidence, correctedText: text })
+        } finally {
+          if (revokeWhenDone && url.startsWith('blob:')) URL.revokeObjectURL(url)
+        }
       }
       useAppStore.getState().replaceSubmissionOcrPages(sub.id, pages)
       if (!silent) toast.success(`Đã chuyển xong.`)
@@ -268,7 +282,7 @@ export default function SubmissionImportPage() {
     }
     try {
       const result = await runAiGrade({
-        ocrText: text,
+        essayText: text,
         exam: {
           title: exam.title, subject: exam.subject, grade: exam.grade,
           requirements: exam.requirements, rubric: exam.rubric, teacherStyle: exam.teacherStyle
@@ -278,7 +292,7 @@ export default function SubmissionImportPage() {
           customRules: student.customRules, hocLuc: student.hocLuc
         }
       })
-      useAppStore.getState().setGradingResult(sub.id, result)
+      await useAppStore.getState().setGradingResult(sub.id, result)
       if (!silent) toast.success('Đã chấm xong.')
       return true
     } catch (e) {
@@ -401,12 +415,19 @@ export default function SubmissionImportPage() {
   }
 
   const isBusy = processingState.type !== null
+  const driveModeActive = getSubmissionImageStorageMode() === 'gdrive'
 
-  const handleDeleteImage = (subId: string, imgId: string) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa ảnh này không?")) {
-      const sub = submissions.find(s => s.id === subId)
-      if (!sub) return
-      setSubmissionImages(subId, sub.imageFiles.filter(img => img.id !== imgId))
+  const handleDeleteImage = async (subId: string, imgId: string) => {
+    if (!globalThis.confirm('Bạn có chắc chắn muốn xóa ảnh này không?')) return
+    const sub = submissions.find((s) => s.id === subId)
+    if (!sub) return
+    try {
+      await setSubmissionImages(
+        subId,
+        sub.imageFiles.filter((img) => img.id !== imgId)
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Không cập nhật được danh sách ảnh.')
     }
   }
 
@@ -417,7 +438,15 @@ export default function SubmissionImportPage() {
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">Nhập bài làm</h1>
           <p className="text-sm text-slate-600 mt-1">
-            {exam.title} · Lớp {classes.find(c => c.id === exam.classId)?.name ?? '—'}
+            {exam.title} · Lớp {classes.find((c) => c.id === exam.classId)?.name ?? '—'}
+            {driveModeActive ? (
+              <span className="block mt-1 text-xs text-slate-500">
+                Lưu ảnh Drive:{' '}
+                <Link to="/profile" className="font-medium text-emerald-800 hover:underline">
+                  Cài đặt → Kết nối Drive / thư mục
+                </Link>
+              </span>
+            ) : null}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -426,14 +455,14 @@ export default function SubmissionImportPage() {
             onClick={requestConvertAll}
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
           >
-            Chuyển All ảnh → chữ
+            Chuyển tất cả ảnh sang chữ
           </button>
           <button 
             disabled={isBusy}
             onClick={requestGradeAll}
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
           >
-            Chấm All điểm
+            Chấm điểm cả lớp
           </button>
         </div>
       </div>
@@ -518,7 +547,11 @@ export default function SubmissionImportPage() {
                         <div className="flex gap-2 flex-wrap">
                           {sub.imageFiles.map((img) => (
                             <div key={img.id} className="relative group">
-                              <img src={img.dataUrl} alt="" className="w-10 h-10 object-cover rounded-lg border border-slate-200" />
+                              <SubmissionImageThumb
+                                img={img}
+                                alt=""
+                                className="w-10 h-10 object-cover rounded-lg border border-slate-200"
+                              />
                               <button
                                 onClick={() => handleDeleteImage(sub.id, img.id)}
                                 disabled={isBusy}
@@ -541,7 +574,7 @@ export default function SubmissionImportPage() {
                         >
                           {isThisConverting ? 'Đang chuyển…' : 'Chuyển sang chữ'}
                         </button>
-                        {hasPages && (
+                        {hasPages && sub && (
                           <button
                             type="button" disabled={isBusy}
                             className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-medium hover:bg-slate-50 whitespace-nowrap text-slate-600"
@@ -553,7 +586,7 @@ export default function SubmissionImportPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600 tabular-nums">
-                      {hasPages ? `${submissionAiMatchPercent(sub.ocrPages)}%` : <span className="text-slate-300">—</span>}
+                      {hasPages && sub ? `${submissionAiMatchPercent(sub.ocrPages)}%` : <span className="text-slate-300">—</span>}
                     </td>
                     <td className="px-4 py-3">
                       <button
