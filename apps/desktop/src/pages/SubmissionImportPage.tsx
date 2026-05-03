@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react'
-import Cropper from 'react-easy-crop'
+import ReactCrop, { type Crop } from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAppStore } from '../state/appStore'
@@ -35,16 +36,16 @@ function submissionForStudent(submissions: Submission[], examId: string, student
   return list.at(-1)
 }
 
-// Full-screen camera and crop modal with react-easy-crop
+// Full-screen camera and crop modal with react-image-crop
 function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null)
 
-  // react-easy-crop state
-  const [crop, setCrop] = useState({ x: 0, y: 0 })
-  const [zoom, setZoom] = useState(1)
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null)
+  // react-image-crop state
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [crop, setCrop] = useState<Crop>({ unit: '%', x: 5, y: 5, width: 90, height: 90 })
+  const [completedCrop, setCompletedCrop] = useState<Crop | null>(null)
 
   useEffect(() => {
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
@@ -74,28 +75,28 @@ function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; on
   }
 
   const handleSave = async () => {
-    if (!capturedUrl || !croppedAreaPixels) return
-    const image = new Image()
-    image.src = capturedUrl
-    await new Promise(resolve => { image.onload = resolve })
+    if (!capturedUrl || !completedCrop || !imgRef.current) return
+    
+    const scaleX = imgRef.current.naturalWidth / imgRef.current.width
+    const scaleY = imgRef.current.naturalHeight / imgRef.current.height
 
     const canvas = document.createElement('canvas')
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
-    canvas.width = croppedAreaPixels.width
-    canvas.height = croppedAreaPixels.height
+    canvas.width = completedCrop.width * scaleX
+    canvas.height = completedCrop.height * scaleY
 
     ctx.drawImage(
-      image,
-      croppedAreaPixels.x,
-      croppedAreaPixels.y,
-      croppedAreaPixels.width,
-      croppedAreaPixels.height,
+      imgRef.current,
+      completedCrop.x * scaleX,
+      completedCrop.y * scaleY,
+      completedCrop.width * scaleX,
+      completedCrop.height * scaleY,
       0,
       0,
-      croppedAreaPixels.width,
-      croppedAreaPixels.height
+      canvas.width,
+      canvas.height
     )
 
     const finalUrl = canvas.toDataURL('image/jpeg')
@@ -104,28 +105,29 @@ function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; on
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center sm:p-4">
+    <div className="fixed top-0 left-0 w-screen h-[100dvh] z-[9999] bg-black flex flex-col items-center justify-center sm:p-4 touch-none">
       <div className="bg-black sm:bg-white sm:rounded-2xl w-full h-full sm:max-w-xl sm:h-[90vh] overflow-hidden flex flex-col relative">
         <div className="p-4 flex justify-between items-center text-white sm:text-slate-900 absolute top-0 left-0 right-0 z-10 sm:relative sm:border-b sm:border-slate-100 bg-black/40 sm:bg-transparent">
           <h3 className="font-semibold">{capturedUrl ? 'Cắt ảnh' : 'Chụp ảnh'}</h3>
           <button onClick={onClose} className="p-2 -mr-2 font-bold hover:opacity-80">✕</button>
         </div>
         
-        <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+        <div className="flex-1 relative bg-black flex items-center justify-center overflow-auto">
           {!capturedUrl ? (
-            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-contain" />
+            <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
           ) : (
-            <div className="absolute inset-0">
-              <Cropper
-                image={capturedUrl}
-                crop={crop}
-                zoom={zoom}
-                aspect={4 / 3}
-                onCropChange={setCrop}
-                onCropComplete={(_, croppedPixels) => setCroppedAreaPixels(croppedPixels)}
-                onZoomChange={setZoom}
+            <ReactCrop
+              crop={crop}
+              onChange={c => setCrop(c)}
+              onComplete={c => setCompletedCrop(c)}
+            >
+              <img
+                ref={imgRef}
+                src={capturedUrl}
+                className="max-h-[80vh] w-auto"
+                alt="Crop me"
               />
-            </div>
+            </ReactCrop>
           )}
         </div>
 
@@ -401,9 +403,11 @@ export default function SubmissionImportPage() {
   const isBusy = processingState.type !== null
 
   const handleDeleteImage = (subId: string, imgId: string) => {
-    const sub = submissions.find(s => s.id === subId)
-    if (!sub) return
-    useAppStore.getState().updateSubmission(subId, { imageFiles: sub.imageFiles.filter(img => img.id !== imgId) })
+    if (window.confirm("Bạn có chắc chắn muốn xóa ảnh này không?")) {
+      const sub = submissions.find(s => s.id === subId)
+      if (!sub) return
+      setSubmissionImages(subId, sub.imageFiles.filter(img => img.id !== imgId))
+    }
   }
 
   return (
@@ -518,7 +522,7 @@ export default function SubmissionImportPage() {
                               <button
                                 onClick={() => handleDeleteImage(sub.id, img.id)}
                                 disabled={isBusy}
-                                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-0"
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-0"
                                 title="Xoá ảnh"
                               >
                                 ✕

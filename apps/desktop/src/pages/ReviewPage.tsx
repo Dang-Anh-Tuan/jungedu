@@ -302,10 +302,10 @@ export default function ReviewPage() {
       </div>
 
       {/* Main 2-column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 items-start h-[calc(100vh-160px)]">
+      <div className="flex flex-col lg:grid lg:grid-cols-5 gap-4 lg:items-start lg:h-[calc(100vh-160px)]">
         
         {/* LEFT: Annotated essay */}
-        <div className="lg:col-span-3 h-full flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="lg:col-span-3 h-[60vh] lg:h-full flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
             <span className="font-semibold text-slate-800 text-sm">Bài làm</span>
             <span className="text-xs text-slate-500">{combinedCorrectedText.length} ký tự</span>
@@ -321,10 +321,10 @@ export default function ReviewPage() {
         </div>
 
         {/* RIGHT: Sidebar (Mistakes on top, Summary on bottom) */}
-        <div className="lg:col-span-2 h-full flex flex-col gap-4">
+        <div className="lg:col-span-2 flex flex-col gap-4 lg:h-full">
 
           {/* Mistake list — Flexible height */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col h-[50vh] lg:h-auto lg:flex-1 lg:min-h-0 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
               <span className="font-semibold text-slate-800 text-sm">Danh sách lỗi ({mistakes.length})</span>
               <button
@@ -423,8 +423,8 @@ export default function ReviewPage() {
             
             <div className="p-4 flex flex-col gap-4">
               {/* Top row: Score & Breakdown & Strengths */}
-              <div className="flex items-stretch gap-4 border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-1.5 flex-shrink-0 border-r border-slate-100 pr-4">
+              <div className="flex flex-col xl:flex-row xl:items-stretch gap-4 border-b border-slate-100 pb-4">
+                <div className="flex items-center justify-center gap-1.5 flex-shrink-0 xl:border-r border-slate-100 xl:pr-4">
                   <input
                     className="w-16 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xl font-bold text-emerald-700 text-center"
                     type="number"
@@ -437,7 +437,7 @@ export default function ReviewPage() {
                   <span className="text-xs text-slate-500 font-medium">/10</span>
                 </div>
                 
-                <div className="w-[32%] min-w-[120px] flex flex-col justify-center border-r border-slate-100 pr-4">
+                <div className="xl:w-[32%] xl:min-w-[120px] flex flex-col justify-center xl:border-r border-slate-100 xl:pr-4">
                   <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-600">
                     <span>Nội dung</span><span className="font-medium text-slate-800 text-right">{initial.rubric.content}</span>
                     <span>Ngữ pháp</span><span className="font-medium text-slate-800 text-right">{initial.rubric.grammar}</span>
