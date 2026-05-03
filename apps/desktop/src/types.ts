@@ -59,7 +59,7 @@ export type Submission = {
 export type GradingRubricBreakdown = ExamRubric
 
 export type GradingMistake = {
-  type: 'spelling' | 'repeat' | 'grammar' | 'missing_idea' | 'structure' | 'other'
+  type: 'spelling' | 'repeat' | 'grammar' | 'missing_idea' | 'structure' | 'suggestion' | 'other'
   original: string
   suggestion?: string
   explanation?: string

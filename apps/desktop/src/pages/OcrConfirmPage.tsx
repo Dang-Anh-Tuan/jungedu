@@ -108,7 +108,7 @@ export default function OcrConfirmPage() {
           <p className="text-sm text-slate-600">
             {submission.ocrPages.length > 0 ? (
               <>
-                Đã có chữ cho {submission.ocrPages.length}/{submission.imageFiles.length} trang · chỉnh sửa được lưu tự động.
+                Đã có chữ cho {submission.ocrPages.length}/{submission.imageFiles.length} trang · chỉnh sửa được lưu tự động nhoaaa~ 🌸
               </>
             ) : (
               <span className="text-amber-800">
@@ -141,7 +141,7 @@ export default function OcrConfirmPage() {
                 </div>
                 <p className="text-xs text-slate-500">
                   Giữ phím <kbd className="rounded border border-slate-200 bg-slate-50 px-1">Shift</kbd> và cuộn chuột trong khung ảnh để zoom;
-                  điểm zoom theo vị trí con trỏ.
+                  ảnh sẽ phóng to trong khung cố định nhoaaa~ 🔍
                 </p>
                 {submission.imageFiles[selectedPageIndex] && (
                   <ShiftWheelZoomImage src={submission.imageFiles[selectedPageIndex].dataUrl} alt={submission.imageFiles[selectedPageIndex].name} />
@@ -151,7 +151,9 @@ export default function OcrConfirmPage() {
               <div className="lg:col-span-3 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="font-semibold text-slate-800">Chữ đọc được (sửa tay — tự lưu)</div>
-                  <p className="text-xs text-slate-500 max-w-xs text-right">Nội dung lưu liên tục, không cần bấm xác nhận từng bước.</p>
+                  <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
+                    ✨ Khi bé nhập nội dung sẽ tự lưu nhoaaaa
+                  </p>
                 </div>
 
                 <textarea
@@ -213,7 +215,8 @@ function ShiftWheelZoomImage({ src, alt }: { src: string; alt: string }) {
       const delta = e.deltaY > 0 ? -0.1 : 0.1
 
       setZoom((z0) => {
-        const z1 = Math.min(4, Math.max(0.25, Math.round((z0 + delta) * 100) / 100))
+        // min zoom is 1 (100%) — no zoom out below original size
+        const z1 = Math.min(4, Math.max(1, Math.round((z0 + delta) * 100) / 100))
         const k = z1 / z0
         requestAnimationFrame(() => {
           const node = wrapRef.current
@@ -231,11 +234,27 @@ function ShiftWheelZoomImage({ src, alt }: { src: string; alt: string }) {
 
   return (
     <div className="space-y-1">
-      <div className="text-xs text-slate-500 tabular-nums">Mức zoom: {Math.round(zoom * 100)}%</div>
-      <div ref={wrapRef} className="overflow-auto max-h-[min(70vh,560px)] rounded-xl border border-slate-100 bg-slate-50 p-2">
+      <div className="text-xs text-slate-500 tabular-nums flex items-center gap-2">
+        <span>Zoom: {Math.round(zoom * 100)}%</span>
+        {zoom > 1 && (
+          <button
+            type="button"
+            className="text-xs text-emerald-600 hover:underline"
+            onClick={() => setZoom(1)}
+          >
+            Reset
+          </button>
+        )}
+      </div>
+      {/* Fixed container: width & height stay the same regardless of zoom; overflow hidden so image is clipped inside */}
+      <div
+        ref={wrapRef}
+        className="overflow-auto rounded-xl border border-slate-100 bg-slate-50"
+        style={{ width: '100%', maxHeight: 'min(70vh, 560px)', height: 'min(70vh, 560px)' }}
+      >
         <img
           className="block rounded-lg bg-white shadow-sm select-none"
-          style={{ width: `${zoom * 100}%`, height: 'auto', maxWidth: 'none' }}
+          style={{ width: `${zoom * 100}%`, height: 'auto', maxWidth: 'none', minWidth: '100%' }}
           src={src}
           alt={alt}
           draggable={false}

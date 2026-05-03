@@ -12,7 +12,7 @@ export const GradingRubricSchema = z.object({
 })
 
 export const GradingMistakeSchema = z.object({
-  type: z.enum(['spelling', 'repeat', 'grammar', 'missing_idea', 'structure', 'other']),
+  type: z.enum(['spelling', 'repeat', 'grammar', 'missing_idea', 'structure', 'suggestion', 'other']),
   original: z.string(),
   suggestion: z.string().optional(),
   explanation: z.string().optional()

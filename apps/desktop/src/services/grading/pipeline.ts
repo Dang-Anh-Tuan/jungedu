@@ -97,7 +97,8 @@ async function gradeWithRubric({
         'Bạn là giáo viên Tiếng Việt cấp tiểu học. Chấm bài văn theo rubric. Trả JSON hợp lệ.\n' +
         'Giữ tone theo teacherStyle.\n' +
         'Điểm tổng quy về thang 10 (có thể có số lẻ 0.5).\n' +
-        'Không bịa lỗi: chỉ nêu những lỗi có cơ sở từ bài làm.'
+        'Không bịa lỗi: chỉ nêu những lỗi có cơ sở từ bài làm.\n' +
+        'QUAN TRỌNG TUYỆT ĐỐI: Trường `original` trong danh sách lỗi BẮT BUỘC phải COPY Y HỆT 100% từ bài làm (essay). Cấm được tự ý sửa lỗi chính tả, cấm paraphrase, cấm tóm tắt. Nếu bạn paraphrase, hệ thống sẽ bị lỗi!'
     },
     {
       role: 'user' as const,
@@ -136,7 +137,7 @@ async function gradeWithRubric({
         '\n  "rubric": { "content": number, "grammar": number, "creativity": number, "presentation": number },' +
         '\n  "strengths": string[],' +
         '\n  "mistakes": [' +
-        '\n    { "type": "spelling" | "repeat" | "grammar" | "missing_idea" | "structure" | "other", "original": string, "suggestion": string?, "explanation": string? }' +
+        '\n    { "type": "spelling" | "repeat" | "grammar" | "missing_idea" | "structure" | "suggestion" | "other", "original": "chuỗi COPY Y HỆT từ essay", "suggestion": string?, "explanation": string? }' +
         '\n  ],' +
         '\n  "rewriteSuggestion": string,' +
         '\n  "teacherComment": string' +
