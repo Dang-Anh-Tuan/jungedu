@@ -29,6 +29,8 @@ type AppState = {
   submissions: Submission[]
   selectedExamId?: string
   selectedSubmissionId?: string
+  setTeacherName: (name: string) => void
+  resetForLogout: () => void
 
   createClass: (input: Omit<SchoolClass, 'id'>) => Promise<string>
   deleteClass: (classId: string) => Promise<void>
@@ -59,6 +61,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   students: [],
   exams: [],
   submissions: [],
+  setTeacherName: (name) => set({ teacherName: name.trim() || 'Thầy/Cô' }),
+  resetForLogout: () =>
+    set({
+      isSyncing: false,
+      teacherName: 'Thầy/Cô',
+      classes: [],
+      students: [],
+      exams: [],
+      submissions: [],
+      selectedExamId: undefined,
+      selectedSubmissionId: undefined
+    }),
 
   createClass: async (input) => {
     const id = createDocumentId('class')

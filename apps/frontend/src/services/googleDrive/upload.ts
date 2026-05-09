@@ -1,5 +1,14 @@
 import { googleDriveThumbnailUrl } from './thumbnailUrl'
 
+function isScopeInsufficientErrorBody(body: string): boolean {
+  const normalized = body.toLowerCase()
+  return (
+    normalized.includes('insufficient authentication scopes') ||
+    normalized.includes('insufficient permission') ||
+    normalized.includes('access_token_scope_insufficient')
+  )
+}
+
 export async function uploadImageToGoogleDrive(
   accessToken: string,
   fileBlob: Blob,
@@ -38,6 +47,11 @@ export async function uploadImageToGoogleDrive(
   })
   if (!res.ok) {
     const t = await res.text()
+    if (res.status === 403 && isScopeInsufficientErrorBody(t)) {
+      throw new Error(
+        'Drive upload bị từ chối vì token thiếu quyền upload. Hãy đăng xuất rồi đăng nhập lại để cấp quyền Google Drive mới.'
+      )
+    }
     throw new Error(`Drive upload: ${res.status} ${t}`)
   }
   const data = (await res.json()) as { id?: string }
@@ -77,4 +91,23 @@ export async function deleteGoogleDriveFile(accessToken: string, fileId: string)
     const t = await res.text()
     console.warn('[Drive] delete file failed', res.status, t)
   }
+}
+
+export async function downloadGoogleDriveFileBlob(
+  accessToken: string,
+  fileId: string
+): Promise<Blob> {
+  const downloadUrl =
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?` +
+    new URLSearchParams({ alt: 'media', supportsAllDrives: 'true' }).toString()
+
+  const res = await fetch(downloadUrl, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  })
+  if (!res.ok) {
+    const t = await res.text()
+    throw new Error(`Drive download: ${res.status} ${t}`)
+  }
+  return res.blob()
 }

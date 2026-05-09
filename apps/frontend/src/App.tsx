@@ -1,6 +1,7 @@
 import React from 'react'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import AppLayout from './layouts/AppLayout'
+import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import ClassesPage from './pages/ClassesPage'
 import ExamsPage from './pages/ExamsPage'
@@ -11,6 +12,7 @@ import OcrConfirmPage from './pages/OcrConfirmPage'
 import GradingPage from './pages/GradingPage'
 import ReviewPage from './pages/ReviewPage'
 import ProfilePage from './pages/ProfilePage'
+import { useAuthStore } from './state/authStore'
 
 function RedirectLegacySuaBai() {
   const { submissionId } = useParams()
@@ -24,6 +26,20 @@ function RedirectExamBulkToNew() {
 }
 
 export default function App() {
+  const { status } = useAuthStore()
+
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-600">
+        Đang kiểm tra đăng nhập...
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated') {
+    return <LoginPage />
+  }
+
   return (
     <Routes>
       <Route element={<AppLayout />}>

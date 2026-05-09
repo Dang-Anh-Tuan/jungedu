@@ -166,13 +166,26 @@ export default function OcrConfirmPage() {
                   <div className="font-semibold text-slate-800">Chữ đọc được (sửa tay — tự lưu)</div>
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedPage ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowAiCompare((v) => !v)}
-                        className="text-xs font-medium rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-                      >
-                        {showAiCompare ? 'Ẩn so sánh với AI' : 'Hiện so sánh với AI'}
-                      </button>
+                      <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={showAiCompare}
+                          onChange={(e) => setShowAiCompare(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <span
+                          className="relative inline-block h-5 w-10 rounded-full bg-slate-300 transition-colors duration-200
+                          peer-checked:bg-emerald-500"
+                        >
+                          <span
+                            className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-md transition-transform duration-200
+                            peer-checked:translate-x-5"
+                          />
+                        </span>
+                        <span className="text-[11px] font-medium text-slate-700">
+                          {showAiCompare ? 'Đang so sánh với AI' : 'Đang sửa bản đối chiếu'}
+                        </span>
+                      </label>
                     ) : null}
                     <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
                       ✨ Khi bé nhập nội dung sẽ tự lưu nhoaaaa
@@ -180,21 +193,8 @@ export default function OcrConfirmPage() {
                   </div>
                 </div>
 
-                <textarea
-                  className="w-full rounded-xl border border-slate-200 p-3 min-h-[320px] font-mono text-sm bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-                  value={draftText}
-                  onChange={(e) => setDraftText(e.target.value)}
-                  onBlur={() => saveDraftNow()}
-                  placeholder={
-                    submission.ocrPages.length === 0
-                      ? 'Chưa có chữ — quay danh sách và bấm «Chuyển ảnh sang chữ» trước.'
-                      : ''
-                  }
-                  disabled={!selectedPage}
-                />
-
                 {selectedPage && showAiCompare ? (
-                  <div className="rounded-xl border border-red-100 bg-red-50/40 p-3 space-y-2">
+                  <div className="rounded-xl border border-red-100 bg-red-50/40 p-3 space-y-2 min-h-[320px]">
                     <div className="text-xs font-semibold text-red-900">
                       Đối chiếu với chữ AI —{' '}
                       <span className="font-normal text-red-800">đoạn nền đỏ là phần khác bản AI đọc được</span>
@@ -215,7 +215,20 @@ export default function OcrConfirmPage() {
                       )}
                     </div>
                   </div>
-                ) : null}
+                ) : (
+                  <textarea
+                    className="w-full rounded-xl border border-slate-200 p-3 min-h-[320px] font-mono text-sm bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                    value={draftText}
+                    onChange={(e) => setDraftText(e.target.value)}
+                    onBlur={() => saveDraftNow()}
+                    placeholder={
+                      submission.ocrPages.length === 0
+                        ? 'Chưa có chữ — quay danh sách và bấm «Chuyển ảnh sang chữ» trước.'
+                        : ''
+                    }
+                    disabled={!selectedPage}
+                  />
+                )}
 
                 <div className="flex flex-wrap justify-end gap-3 items-center">
                   <button

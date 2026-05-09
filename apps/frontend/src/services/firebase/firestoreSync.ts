@@ -9,6 +9,7 @@ import {
   normalizeStudent,
   normalizeSubmission
 } from './firestoreCodec'
+import { getUserCollectionPath } from './firestorePaths'
 import { rewriteFirestoreError } from './firestoreErrors'
 
 export type FirestoreSyncDispatch = {
@@ -50,7 +51,7 @@ function subscribeCollection<T>(
  * Lắng nghe realtime Firestore. Trả về hàm unsubscribe (ví dụ khi logout).
  * Migrate BE: thay module này bằng WebSocket hoặc polling gọi REST.
  */
-export function subscribeFirestoreCollections(dispatch: FirestoreSyncDispatch): () => void {
+export function subscribeFirestoreCollections(uid: string, dispatch: FirestoreSyncDispatch): () => void {
   let pending = 4
   const initialReceived = () => {
     pending -= 1
@@ -68,7 +69,7 @@ export function subscribeFirestoreCollections(dispatch: FirestoreSyncDispatch): 
 
   const unsubs = [
     subscribeCollection(
-      'classes',
+      getUserCollectionPath(uid, 'classes'),
       (snap) =>
         snap.docs.map((d: QueryDocumentSnapshot) => normalizeSchoolClass(d.id, d.data() as Record<string, unknown>)),
       dispatch.setClasses,
@@ -76,7 +77,7 @@ export function subscribeFirestoreCollections(dispatch: FirestoreSyncDispatch): 
       listenerFailed
     ),
     subscribeCollection(
-      'students',
+      getUserCollectionPath(uid, 'students'),
       (snap) =>
         snap.docs.map((d: QueryDocumentSnapshot) => normalizeStudent(d.id, d.data() as Record<string, unknown>)),
       dispatch.setStudents,
@@ -84,7 +85,7 @@ export function subscribeFirestoreCollections(dispatch: FirestoreSyncDispatch): 
       listenerFailed
     ),
     subscribeCollection(
-      'exams',
+      getUserCollectionPath(uid, 'exams'),
       (snap) =>
         snap.docs.map((d: QueryDocumentSnapshot) => normalizeExam(d.id, d.data() as Record<string, unknown>)),
       dispatch.setExams,
@@ -92,7 +93,7 @@ export function subscribeFirestoreCollections(dispatch: FirestoreSyncDispatch): 
       listenerFailed
     ),
     subscribeCollection(
-      'submissions',
+      getUserCollectionPath(uid, 'submissions'),
       (snap) =>
         snap.docs.map((d: QueryDocumentSnapshot) =>
           normalizeSubmission(d.id, d.data() as Record<string, unknown>)

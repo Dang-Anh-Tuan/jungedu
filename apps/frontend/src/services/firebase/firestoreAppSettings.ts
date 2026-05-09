@@ -2,9 +2,9 @@ import { deleteField, doc, onSnapshot, setDoc } from 'firebase/firestore'
 import { db } from '../../lib/firebase'
 import type { DriveUploadFolderPrefState } from '../googleDrive/uploadFolderPref'
 import { setDriveUploadFolderPrefCache } from '../googleDrive/uploadFolderPref'
+import { getRequiredAuthUid } from './firestorePaths'
 import { rewriteFirestoreError } from './firestoreErrors'
 
-const SETTINGS_COLLECTION = 'settings'
 export const APP_SETTINGS_DOC_ID = 'app'
 
 export function normalizeDriveUploadFolderPrefFromFirestore(
@@ -21,10 +21,11 @@ export function normalizeDriveUploadFolderPrefFromFirestore(
 
 /** Đồng bộ tuỳ chọn thư mục Drive từ Firestore → cache (realtime). */
 export function subscribeAppSettingsDriveUploadFolder(
+  uid: string,
   onError?: (message: string) => void
 ): () => void {
   return onSnapshot(
-    doc(db, SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID),
+    doc(db, 'users', uid, 'settings', APP_SETTINGS_DOC_ID),
     (snap) => {
       const data = snap.exists() ? (snap.data() as Record<string, unknown>) : {}
       setDriveUploadFolderPrefCache(normalizeDriveUploadFolderPrefFromFirestore(data))
@@ -40,7 +41,8 @@ export function subscribeAppSettingsDriveUploadFolder(
 export async function saveDriveUploadFolderPrefToFirestore(
   pref: DriveUploadFolderPrefState
 ): Promise<void> {
-  const ref = doc(db, SETTINGS_COLLECTION, APP_SETTINGS_DOC_ID)
+  const uid = getRequiredAuthUid()
+  const ref = doc(db, 'users', uid, 'settings', APP_SETTINGS_DOC_ID)
   try {
     if (pref.kind === 'env') {
       await setDoc(

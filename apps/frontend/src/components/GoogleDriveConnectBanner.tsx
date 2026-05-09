@@ -1,11 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { saveDriveUploadFolderPrefToFirestore } from '../services/firebase'
-import {
-  clearGoogleDriveSession,
-  connectGoogleDriveInteractive,
-  getStoredGoogleDriveAccessToken
-} from '../services/googleDrive/oauth'
 import {
   parseDriveFolderIdFromPaste,
   useDriveUploadFolderPref,
@@ -13,8 +8,6 @@ import {
 } from '../services/googleDrive/uploadFolderPref'
 
 export default function GoogleDriveConnectBanner() {
-  const clientId = useMemo(() => import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim() ?? '', [])
-  const [connected, setConnected] = useState(() => !!getStoredGoogleDriveAccessToken())
   const folderPref = useDriveUploadFolderPref()
 
   const [folderInput, setFolderInput] = useState('')
@@ -23,28 +16,6 @@ export default function GoogleDriveConnectBanner() {
     if (folderPref.kind === 'folder') setFolderInput(folderPref.folderId)
     else setFolderInput('')
   }, [folderPref])
-
-  const refresh = useCallback(() => setConnected(!!getStoredGoogleDriveAccessToken()), [])
-
-  const handleConnect = async () => {
-    if (!clientId) {
-      toast.error('Thiếu VITE_GOOGLE_OAUTH_CLIENT_ID trong file .env')
-      return
-    }
-    try {
-      await connectGoogleDriveInteractive(clientId)
-      refresh()
-      toast.success('Đã kết nối Google Drive')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không kết nối được Google Drive')
-    }
-  }
-
-  const handleDisconnect = () => {
-    clearGoogleDriveSession()
-    refresh()
-    toast.message('Đã ngắt phiên Google Drive trên trình duyệt này')
-  }
 
   const persistPref = async (pref: DriveUploadFolderPrefState, okMessage: string) => {
     try {
@@ -81,40 +52,12 @@ export default function GoogleDriveConnectBanner() {
 
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-800 space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+      <div>
         <div>
-          <div className="font-semibold text-slate-900">Lưu ảnh lên Google Drive</div>
+          <div className="font-semibold text-slate-900">Thư mục lưu ảnh Google Drive</div>
           <p className="text-slate-600 mt-0.5">
-            Trước khi tải ảnh lên, hãy đăng nhập Google trên trình duyệt này (phiên lưu trong tab hiện tại).
+            Bạn đã đăng nhập Google từ bước vào ứng dụng. Ở đây chỉ cần chọn thư mục Drive để lưu ảnh.
           </p>
-          {!clientId ? (
-            <p className="text-amber-800 mt-1">Chưa cấu hình OAuth Client ID trong .env.</p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          {connected ? (
-            <>
-              <span className="inline-flex items-center rounded-lg bg-emerald-100 px-3 py-1.5 text-emerald-900 font-medium">
-                Đã kết nối Drive
-              </span>
-              <button
-                type="button"
-                onClick={handleDisconnect}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2 font-medium text-slate-800 hover:bg-slate-50"
-              >
-                Ngắt kết nối
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              onClick={handleConnect}
-              disabled={!clientId}
-              className="rounded-xl bg-sky-700 px-4 py-2 font-medium text-white hover:bg-sky-800 disabled:opacity-50"
-            >
-              Kết nối Google Drive
-            </button>
-          )}
         </div>
       </div>
 

@@ -5,6 +5,8 @@ type TokenCallbackResp = {
   error_description?: string
 }
 
+import { GoogleAuthProvider, type UserCredential } from 'firebase/auth'
+
 interface GisTokenClient {
   requestAccessToken: (overrideConfig?: { prompt?: string }) => void
 }
@@ -27,6 +29,8 @@ declare global {
 
 const TOKEN_KEY = 'jungedu_gdrive_at'
 const TOKEN_EXP_KEY = 'jungedu_gdrive_exp'
+export const DRIVE_FILE_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+export const DRIVE_FULL_SCOPE = 'https://www.googleapis.com/auth/drive'
 
 /**
  * Mặc định `drive.file`. Nếu upload vào thư mục bị 403 hoặc file chỉ xuất hiện ở gốc My Drive,
@@ -35,14 +39,14 @@ const TOKEN_EXP_KEY = 'jungedu_gdrive_exp'
 export function getGoogleDriveOAuthScopes(): string {
   const v = import.meta.env.VITE_GOOGLE_DRIVE_SCOPE_FULL?.trim().toLowerCase()
   if (v === '1' || v === 'true' || v === 'yes') {
-    return 'https://www.googleapis.com/auth/drive'
+    return DRIVE_FULL_SCOPE
   }
-  return 'https://www.googleapis.com/auth/drive.file'
+  return DRIVE_FILE_SCOPE
 }
 
 export async function loadGoogleIdentityServices(): Promise<void> {
-  if (typeof window === 'undefined') return
-  if (window.google?.accounts?.oauth2) return
+  if (globalThis.window === undefined) return
+  if (globalThis.window.google?.accounts?.oauth2) return
   await new Promise<void>((resolve, reject) => {
     const s = document.createElement('script')
     s.src = 'https://accounts.google.com/gsi/client'
@@ -70,10 +74,17 @@ function persistToken(accessToken: string, expiresInSec: number): void {
   sessionStorage.setItem(TOKEN_EXP_KEY, String(Date.now() + expiresInSec * 1000))
 }
 
+export function persistGoogleDriveAccessTokenFromCredential(credential: UserCredential): void {
+  const googleCredential = GoogleAuthProvider.credentialFromResult(credential)
+  const accessToken = googleCredential?.accessToken?.trim()
+  if (!accessToken) return
+  persistToken(accessToken, 3600)
+}
+
 /** Gọi từ nút bấm (cử chỉ người dùng) — lần đầu nên dùng consent. */
 export async function connectGoogleDriveInteractive(clientId: string): Promise<string> {
   await loadGoogleIdentityServices()
-  const google = window.google
+  const google = globalThis.window.google
   if (!google?.accounts?.oauth2?.initTokenClient) {
     throw new Error('Google Identity Services chưa sẵn sàng')
   }
@@ -103,7 +114,7 @@ export async function refreshGoogleDriveTokenSilent(clientId: string): Promise<s
   const existing = getStoredGoogleDriveAccessToken()
   if (existing) return existing
   await loadGoogleIdentityServices()
-  const google = window.google
+  const google = globalThis.window.google
   if (!google?.accounts?.oauth2?.initTokenClient) return null
   return new Promise((resolve) => {
     const client = google.accounts.oauth2.initTokenClient({

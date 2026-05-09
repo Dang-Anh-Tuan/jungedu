@@ -1,10 +1,10 @@
-import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import React, { useMemo, useRef, useState, useEffect } from 'react'
 import ReactCrop, { type Crop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useAppStore } from '../state/appStore'
-import type { Submission, Student, SubmissionImageFile } from '../types'
+import type { Submission, SubmissionImageFile } from '../types'
 import { fileToDataUrl } from '../lib/fileDataUrl'
 import { sortFilesNatural } from '../lib/bulkFiles'
 import { runImageToText } from '../services/imageToText'
@@ -12,6 +12,17 @@ import { runAiGrade } from '../services/aiClient'
 import { submissionAiMatchPercent } from '../lib/textSimilarity'
 import { getSubmissionImageStorageMode } from '../services/config'
 import { resolveSubmissionImageWorkUrl } from '../services/storage/submissionImagePersistence'
+import {
+  getStoredGoogleDriveAccessToken,
+  refreshGoogleDriveTokenSilent
+} from '../services/googleDrive/oauth'
+import { downloadGoogleDriveFileBlob } from '../services/googleDrive/upload'
+import {
+  buildStudentResultRows,
+  exportSelectedDetailedReviewPdf,
+  exportSelectedResultsSummaryPdf,
+  exportSelectedResultsToExcel
+} from '../services/export/reportExport'
 import SubmissionImageThumb from '../components/SubmissionImageThumb'
 
 type SelectedFile = SubmissionImageFile
@@ -24,6 +35,35 @@ async function dataUrlToFile(dataUrl: string, fileName: string) {
   const res = await fetch(dataUrl)
   const blob = await res.blob()
   return new File([blob], fileName, { type: blob.type || 'image/*' })
+}
+
+async function toOcrInputFile(
+  img: SubmissionImageFile
+): Promise<{ file: File; cleanupObjectUrl?: string }> {
+  if (img.storageKind === 'gdrive' && img.driveFileId) {
+    const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim()
+    if (!clientId) {
+      throw new Error('Thiếu VITE_GOOGLE_OAUTH_CLIENT_ID trong file .env')
+    }
+    const token =
+      getStoredGoogleDriveAccessToken() ?? (await refreshGoogleDriveTokenSilent(clientId)) ?? undefined
+    if (!token) {
+      throw new Error('Phiên Google Drive đã hết hạn. Hãy đăng xuất rồi đăng nhập lại.')
+    }
+    const blob = await downloadGoogleDriveFileBlob(token, img.driveFileId)
+    return {
+      file: new File([blob], img.name || `drive_${img.driveFileId}.jpg`, {
+        type: blob.type || 'image/jpeg'
+      })
+    }
+  }
+
+  const { url, revokeWhenDone } = await resolveSubmissionImageWorkUrl(img)
+  if (!url) {
+    throw new Error('Không đọc được ảnh để chuyển chữ.')
+  }
+  const file = await dataUrlToFile(url, img.name)
+  return { file, cleanupObjectUrl: revokeWhenDone && url.startsWith('blob:') ? url : undefined }
 }
 
 async function ensureSubmissionId(examId: string, studentId: string): Promise<string> {
@@ -186,6 +226,7 @@ export default function SubmissionImportPage() {
     type: 'convert' | 'grade' | 'convert_all' | 'grade_all';
     studentId?: string; // missing if 'all'
   } | null>(null)
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([])
 
   async function onPickImages(studentId: string, list: FileList | null) {
     if (!examId || !list?.length) return
@@ -251,14 +292,15 @@ export default function SubmissionImportPage() {
     try {
       const pages: { imageName: string; ocrText: string; confidence: number; correctedText: string }[] = []
       for (const img of sub.imageFiles) {
-        const { url, revokeWhenDone } = await resolveSubmissionImageWorkUrl(img)
-        if (!url) continue
+        let cleanupObjectUrl: string | undefined
         try {
-          const file = await dataUrlToFile(url, img.name)
+          const prepared = await toOcrInputFile(img)
+          const file = prepared.file
+          cleanupObjectUrl = prepared.cleanupObjectUrl
           const { text, confidence } = await runImageToText(file)
           pages.push({ imageName: img.name, ocrText: text, confidence, correctedText: text })
         } finally {
-          if (revokeWhenDone && url.startsWith('blob:')) URL.revokeObjectURL(url)
+          if (cleanupObjectUrl) URL.revokeObjectURL(cleanupObjectUrl)
         }
       }
       useAppStore.getState().replaceSubmissionOcrPages(sub.id, pages)
@@ -416,6 +458,68 @@ export default function SubmissionImportPage() {
 
   const isBusy = processingState.type !== null
   const driveModeActive = getSubmissionImageStorageMode() === 'gdrive'
+  const gradedStudents = classStudents.filter((st) => {
+    const sub = submissionForStudent(submissions, exam.id, st.id)
+    return !!sub?.gradingResult
+  })
+  const selectedStudentsForExport = gradedStudents.filter((st) =>
+    selectedStudentIds.includes(st.id)
+  )
+  const allGradedSelected =
+    gradedStudents.length > 0 && selectedStudentsForExport.length === gradedStudents.length
+
+  const toggleStudentExport = (studentId: string) => {
+    setSelectedStudentIds((prev) =>
+      prev.includes(studentId) ? prev.filter((id) => id !== studentId) : [...prev, studentId]
+    )
+  }
+
+  const toggleSelectAllExport = () => {
+    if (allGradedSelected) {
+      setSelectedStudentIds([])
+      return
+    }
+    setSelectedStudentIds(gradedStudents.map((s) => s.id))
+  }
+
+  const selectedSubmissions = selectedStudentsForExport
+    .map((st) => submissionForStudent(submissions, exam.id, st.id))
+    .filter((s): s is Submission => !!s)
+
+  const exportRows = buildStudentResultRows({
+    students: selectedStudentsForExport,
+    submissions: selectedSubmissions
+  })
+
+  const ensureHasSelection = (): boolean => {
+    if (selectedStudentsForExport.length === 0) {
+      toast.error('Hãy tick chọn ít nhất 1 học sinh đã có kết quả chấm.')
+      return false
+    }
+    return true
+  }
+
+  const onExportDetailedPdf = () => {
+    if (!ensureHasSelection()) return
+    exportSelectedDetailedReviewPdf({
+      exam,
+      students: selectedStudentsForExport,
+      submissions: selectedSubmissions
+    })
+    toast.success('Đã xuất PDF chi tiết.')
+  }
+
+  const onExportSummaryPdf = () => {
+    if (!ensureHasSelection()) return
+    exportSelectedResultsSummaryPdf(exportRows, exam.title)
+    toast.success('Đã xuất PDF bảng điểm.')
+  }
+
+  const onExportExcel = async () => {
+    if (!ensureHasSelection()) return
+    await exportSelectedResultsToExcel(exportRows, exam.title)
+    toast.success('Đã xuất Excel bảng điểm.')
+  }
 
   const handleDeleteImage = async (subId: string, imgId: string) => {
     if (!globalThis.confirm('Bạn có chắc chắn muốn xóa ảnh này không?')) return
@@ -467,6 +571,49 @@ export default function SubmissionImportPage() {
         </div>
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-900">Xuất báo cáo kết quả</div>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Tick học sinh đã chấm để xuất PDF chi tiết (kiểu Duyệt kết quả), PDF bảng điểm hoặc Excel.
+            </p>
+          </div>
+          <label className="text-xs font-medium text-slate-700 flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={allGradedSelected}
+              onChange={toggleSelectAllExport}
+              className="rounded border-slate-300"
+            />
+            Chọn tất cả đã chấm ({gradedStudents.length})
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onExportDetailedPdf}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50"
+          >
+            Export PDF chi tiết
+          </button>
+          <button
+            type="button"
+            onClick={onExportSummaryPdf}
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50"
+          >
+            Export PDF bảng điểm
+          </button>
+          <button
+            type="button"
+            onClick={() => void onExportExcel()}
+            className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+          >
+            Export Excel bảng điểm
+          </button>
+        </div>
+      </div>
+
       {/* Progress Bar Overlay */}
       {isBusy && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm flex flex-col gap-2">
@@ -493,6 +640,7 @@ export default function SubmissionImportPage() {
           <table className="min-w-[1000px] w-full text-sm">
             <thead className="bg-slate-50 text-left border-b border-slate-100">
               <tr>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Chọn export</th>
                 <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Họ và tên</th>
                 <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap min-w-[180px]">Ảnh bài làm</th>
                 <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Xem trước</th>
@@ -514,6 +662,16 @@ export default function SubmissionImportPage() {
 
                 return (
                   <tr key={st.id} className="align-middle hover:bg-slate-50/80">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedStudentIds.includes(st.id)}
+                        disabled={!hasGraded}
+                        onChange={() => toggleStudentExport(st.id)}
+                        className="rounded border-slate-300"
+                        title={hasGraded ? 'Chọn để export' : 'Cần chấm điểm trước'}
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium text-slate-900">
                       {st.name}
                       {st.studentCode && <div className="font-mono text-xs text-slate-500 font-normal">{st.studentCode}</div>}

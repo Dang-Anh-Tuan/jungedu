@@ -1,6 +1,9 @@
 import React from 'react'
+import { signOut } from 'firebase/auth'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { auth } from '../lib/firebase'
+import { useAuthStore } from '../state/authStore'
 
 const nav = [
   { to: '/', label: 'Trang chủ' },
@@ -11,6 +14,7 @@ const nav = [
 
 export default function AppLayout() {
   const location = useLocation()
+  const user = useAuthStore((s) => s.user)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 text-slate-900">
@@ -38,6 +42,16 @@ export default function AppLayout() {
               )
             })}
           </nav>
+          <div className="flex items-center gap-2 text-sm">
+            {user?.email ? <span className="text-slate-600">{user.email}</span> : null}
+            <button
+              type="button"
+              onClick={() => void signOut(auth)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-700 hover:bg-slate-50"
+            >
+              Đăng xuất
+            </button>
+          </div>
         </div>
       </header>
       <main className="max-w-6xl mx-auto px-4 py-8">

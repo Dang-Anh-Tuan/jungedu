@@ -1,6 +1,8 @@
 import { initializeApp } from 'firebase/app';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { DRIVE_FILE_SCOPE } from '../services/googleDrive/oauth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "YOUR_API_KEY",
@@ -12,5 +14,9 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const googleAuthProvider = new GoogleAuthProvider();
+googleAuthProvider.addScope(DRIVE_FILE_SCOPE);
+googleAuthProvider.setCustomParameters({ prompt: 'consent', include_granted_scopes: 'true' });
 export const db = getFirestore(app);
 export const storage = getStorage(app);

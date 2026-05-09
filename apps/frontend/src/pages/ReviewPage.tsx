@@ -40,6 +40,29 @@ function createFuzzyRegex(original: string) {
   return new RegExp(pattern, 'gi')
 }
 
+function clampRubricValue(v: number): number {
+  if (!Number.isFinite(v)) return 0
+  return Math.max(0, Math.min(10, Math.round(v * 10) / 10))
+}
+
+function scoreFromRubric(rubric: GradingResult['rubric']): number {
+  const total = rubric.content + rubric.grammar + rubric.creativity + rubric.presentation
+  return Math.max(0, Math.min(10, Math.round(total * 10) / 10))
+}
+
+function normalizeStrengthsInput(values: unknown[] | undefined): string[] {
+  if (!Array.isArray(values)) return []
+  return values
+    .map((v) => {
+      if (typeof v === 'string') return v.trim()
+      if (v && typeof v === 'object' && 'text' in v && typeof (v as { text?: unknown }).text === 'string') {
+        return (v as { text: string }).text.trim()
+      }
+      return String(v ?? '').trim()
+    })
+    .filter(Boolean)
+}
+
 /**
  * Render the essay text with inline error highlights and suggestion overlays.
  */
@@ -184,7 +207,12 @@ export default function ReviewPage() {
     return submission.ocrPages.map((p) => p.correctedText).join('\n')
   }, [submission])
 
-  const [score, setScore] = useState<number>(initial?.score ?? 8)
+  const [rubricDraft, setRubricDraft] = useState<GradingResult['rubric']>(
+    initial?.rubric ?? { content: 0, grammar: 0, creativity: 0, presentation: 0 }
+  )
+  const [strengthsText, setStrengthsText] = useState<string>(
+    normalizeStrengthsInput(initial?.strengths as unknown[] | undefined).join('\n')
+  )
   const [teacherComment, setTeacherComment] = useState<string>(initial?.teacherComment ?? '')
   const [showErrors, setShowErrors] = useState(true)
   const [showSuggestions, setShowSuggestions] = useState(true)
@@ -196,22 +224,54 @@ export default function ReviewPage() {
   const [newMistakeOriginal, setNewMistakeOriginal] = useState('')
   const [newMistakeSuggestion, setNewMistakeSuggestion] = useState('')
 
+  useEffect(() => {
+    if (!initial) return
+    setRubricDraft(initial.rubric)
+    setStrengthsText(normalizeStrengthsInput(initial.strengths as unknown[] | undefined).join('\n'))
+    setTeacherComment(initial.teacherComment ?? '')
+  }, [initial?.rubric, initial?.strengths, initial?.teacherComment])
+
+  const score = scoreFromRubric(rubricDraft)
+  const strengths = strengthsText
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const buildResult = (mistakesOverride?: GradingMistake[]): GradingResult | null => {
+    if (!initial) return null
+    return {
+      ...initial,
+      rubric: rubricDraft,
+      score,
+      strengths,
+      teacherComment,
+      mistakes: mistakesOverride ?? initial.mistakes
+    }
+  }
+
   // Sync back to store whenever score or comment changes
   const saveTimeout = useRef<number>()
   useEffect(() => {
     if (!initial || !submission) return
     clearTimeout(saveTimeout.current)
     saveTimeout.current = window.setTimeout(() => {
-      if (score !== initial.score || teacherComment !== initial.teacherComment) {
-        setGradingResult(submission.id, {
-          ...initial,
-          score,
-          teacherComment
-        })
+      const next = buildResult()
+      if (!next) return
+      const initialStrengths = normalizeStrengthsInput(initial.strengths as unknown[] | undefined).join('\n')
+      const shouldSave =
+        next.score !== initial.score ||
+        next.teacherComment !== initial.teacherComment ||
+        initialStrengths !== strengthsText ||
+        next.rubric.content !== initial.rubric.content ||
+        next.rubric.grammar !== initial.rubric.grammar ||
+        next.rubric.creativity !== initial.rubric.creativity ||
+        next.rubric.presentation !== initial.rubric.presentation
+      if (shouldSave) {
+        setGradingResult(submission.id, next)
       }
     }, 500)
     return () => clearTimeout(saveTimeout.current)
-  }, [score, teacherComment, initial, submission, setGradingResult])
+  }, [rubricDraft, score, teacherComment, strengthsText, initial, submission, setGradingResult])
 
   if (!submission) {
     return (
@@ -242,7 +302,8 @@ export default function ReviewPage() {
   const handleDeleteMistake = (index: number) => {
     const updatedMistakes = [...mistakes]
     updatedMistakes.splice(index, 1)
-    setGradingResult(submission.id, { ...initial, mistakes: updatedMistakes })
+    const next = buildResult(updatedMistakes)
+    if (next) setGradingResult(submission.id, next)
     if (selectedMistakeIdx === index) setSelectedMistakeIdx(null)
   }
 
@@ -253,7 +314,8 @@ export default function ReviewPage() {
       original: newMistakeOriginal.trim(),
       suggestion: newMistakeSuggestion.trim() || undefined
     }
-    setGradingResult(submission.id, { ...initial, mistakes: [...mistakes, newMistake] })
+    const next = buildResult([...mistakes, newMistake])
+    if (next) setGradingResult(submission.id, next)
     setIsAddingMistake(false)
     setNewMistakeOriginal('')
     setNewMistakeSuggestion('')
@@ -269,7 +331,11 @@ export default function ReviewPage() {
             Học sinh: <strong>{submission.studentName}</strong>
           </p>
         </div>
-        <button type="button" className="text-sm text-slate-600 hover:text-slate-900" onClick={() => navigate(-1)}>
+        <button
+          type="button"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          onClick={() => navigate(-1)}
+        >
           ← Trở lại
         </button>
       </div>
@@ -425,42 +491,81 @@ export default function ReviewPage() {
               {/* Top row: Score & Breakdown & Strengths */}
               <div className="flex flex-col xl:flex-row xl:items-stretch gap-4 border-b border-slate-100 pb-4">
                 <div className="flex items-center justify-center gap-1.5 flex-shrink-0 xl:border-r border-slate-100 xl:pr-4">
-                  <input
-                    className="w-16 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xl font-bold text-emerald-700 text-center"
-                    type="number"
-                    step="0.5"
-                    min={0}
-                    max={10}
-                    value={score}
-                    onChange={(e) => setScore(Number(e.target.value))}
-                  />
+                  <div className="w-16 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xl font-bold text-emerald-700 text-center">
+                    {score.toFixed(1)}
+                  </div>
                   <span className="text-xs text-slate-500 font-medium">/10</span>
                 </div>
                 
                 <div className="xl:w-[32%] xl:min-w-[120px] flex flex-col justify-center xl:border-r border-slate-100 xl:pr-4">
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-600">
-                    <span>Nội dung</span><span className="font-medium text-slate-800 text-right">{initial.rubric.content}</span>
-                    <span>Ngữ pháp</span><span className="font-medium text-slate-800 text-right">{initial.rubric.grammar}</span>
-                    <span>Sáng tạo</span><span className="font-medium text-slate-800 text-right">{initial.rubric.creativity}</span>
-                    <span>Trình bày</span><span className="font-medium text-slate-800 text-right">{initial.rubric.presentation}</span>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-600 items-center">
+                    <span>Nội dung</span>
+                    <input
+                      type="number"
+                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
+                      value={rubricDraft.content}
+                      step="0.5"
+                      min={0}
+                      max={10}
+                      onChange={(e) =>
+                        setRubricDraft((prev) => ({ ...prev, content: clampRubricValue(Number(e.target.value)) }))
+                      }
+                    />
+                    <span>Ngữ pháp</span>
+                    <input
+                      type="number"
+                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
+                      value={rubricDraft.grammar}
+                      step="0.5"
+                      min={0}
+                      max={10}
+                      onChange={(e) =>
+                        setRubricDraft((prev) => ({ ...prev, grammar: clampRubricValue(Number(e.target.value)) }))
+                      }
+                    />
+                    <span>Sáng tạo</span>
+                    <input
+                      type="number"
+                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
+                      value={rubricDraft.creativity}
+                      step="0.5"
+                      min={0}
+                      max={10}
+                      onChange={(e) =>
+                        setRubricDraft((prev) => ({
+                          ...prev,
+                          creativity: clampRubricValue(Number(e.target.value))
+                        }))
+                      }
+                    />
+                    <span>Trình bày</span>
+                    <input
+                      type="number"
+                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
+                      value={rubricDraft.presentation}
+                      step="0.5"
+                      min={0}
+                      max={10}
+                      onChange={(e) =>
+                        setRubricDraft((prev) => ({
+                          ...prev,
+                          presentation: clampRubricValue(Number(e.target.value))
+                        }))
+                      }
+                    />
                   </div>
                 </div>
 
-                {initial.strengths.length > 0 && (
-                  <div className="flex-1 flex flex-col min-h-0">
-                    <div className="text-xs font-semibold text-emerald-700 mb-1 flex items-center gap-1 flex-shrink-0">✨ Điểm mạnh</div>
-                    <div className="overflow-y-auto pr-1 max-h-24">
-                      <ul className="text-xs text-slate-700 space-y-1">
-                        {initial.strengths.map((s, i) => (
-                          <li key={i} className="flex gap-1.5 items-start">
-                            <span className="text-emerald-500 flex-shrink-0 mt-0.5">•</span>
-                            <span className="leading-relaxed">{s}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                <div className="flex-1 flex flex-col min-h-0">
+                  <div className="text-xs font-semibold text-emerald-700 mb-1 flex items-center gap-1 flex-shrink-0">✨ Điểm mạnh</div>
+                  <textarea
+                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs resize-y min-h-[84px]"
+                    value={strengthsText}
+                    onChange={(e) => setStrengthsText(e.target.value)}
+                    placeholder="Mỗi dòng 1 ý ngắn, đúng trọng tâm"
+                  />
+                  <div className="text-[11px] text-slate-500 mt-1">Mỗi dòng sẽ là một điểm mạnh.</div>
                   </div>
-                )}
               </div>
 
               {/* Bottom row: Comments */}
@@ -482,6 +587,13 @@ export default function ReviewPage() {
 
         </div>
       </div>
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="fixed bottom-5 right-5 z-30 rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-emerald-700"
+      >
+        ← Trở lại
+      </button>
     </div>
   )
 }
