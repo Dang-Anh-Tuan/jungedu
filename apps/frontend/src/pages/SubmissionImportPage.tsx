@@ -17,10 +17,7 @@ import { runAiGrade, runAiGradeBatch } from '../application/gradingService'
 import { submissionAiMatchPercent } from '../lib/textSimilarity'
 import { getSubmissionImageStorageMode } from '../services/config'
 import { resolveSubmissionImageWorkUrl } from '../services/storage/submissionImagePersistence'
-import {
-  getStoredGoogleDriveAccessToken,
-  refreshGoogleDriveTokenSilent
-} from '../services/googleDrive/oauth'
+import { getStoredGoogleDriveAccessToken } from '../services/googleDrive/oauth'
 import { downloadGoogleDriveFileBlob } from '../services/googleDrive/upload'
 import {
   buildStudentResultRows,
@@ -42,18 +39,19 @@ async function dataUrlToFile(dataUrl: string, fileName: string) {
   return new File([blob], fileName, { type: blob.type || 'image/*' })
 }
 
+/**
+ * Chuẩn bị File cho OCR.
+ * Ảnh trên Drive: tải qua Drive API với access token đã lưu (đăng nhập Google / «Kết nối Drive» trong Cài đặt).
+ * Không gọi `refreshGoogleDriveTokenSilent` — tránh popup accounts.google.com khi đang OCR.
+ * URL thumbnail `drive.google.com/thumbnail` với file riêng tư thường 302 / không fetch được từ JS (như trong Network).
+ */
 async function toOcrInputFile(
   img: SubmissionImageFile
 ): Promise<{ file: File; cleanupObjectUrl?: string }> {
   if (img.storageKind === 'gdrive' && img.driveFileId) {
-    const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim()
-    if (!clientId) {
-      throw new Error(i18n.t('submissionImport.missingGoogleOAuth'))
-    }
-    const token =
-      getStoredGoogleDriveAccessToken() ?? (await refreshGoogleDriveTokenSilent(clientId)) ?? undefined
+    const token = getStoredGoogleDriveAccessToken()
     if (!token) {
-      throw new Error(i18n.t('submissionImport.googleDriveSessionExpired'))
+      throw new Error(i18n.t('submissionImport.driveOcrNeedSession'))
     }
     const blob = await downloadGoogleDriveFileBlob(token, img.driveFileId)
     return {

@@ -411,6 +411,10 @@ const vi = {
     convertOk: 'Đã chuyển xong.',
     convertFail: 'Không chuyển được ảnh sang chữ.',
     noText: 'Chưa có chữ từ ảnh.',
+    driveOcrNeedSession:
+      'Ảnh đang lưu trên Google Drive: cần phiên có quyền Drive. Vào Cài đặt → Kết nối Google Drive (hoặc đăng xuất rồi đăng nhập lại bằng Google) rồi chạy «Chuyển sang chữ» lại — không liên quan API Gemini.',
+    imageReadForOcrFail: 'Không đọc được ảnh để OCR (URL/blob rỗng hoặc không tải được). Kiểm tra ảnh Drive / Firebase / mạng.',
+    gradeUnknownError: 'Chấm điểm gặp lỗi không xác định.',
     gradeOk: 'Đã chấm xong.',
     bulkConvertNone: 'Không có học sinh nào có ảnh để chuyển.',
     bulkConvertOk: 'Đã chuyển xong {{success}}/{{total}} học sinh.',

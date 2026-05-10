@@ -5,7 +5,7 @@ import {
   getDriveUploadFolderPrefCached,
   getEffectiveDriveUploadFolderId
 } from '../googleDrive/uploadFolderPref'
-import { getStoredGoogleDriveAccessToken, refreshGoogleDriveTokenSilent } from '../googleDrive/oauth'
+import { getStoredGoogleDriveAccessToken } from '../googleDrive/oauth'
 import { googleDriveThumbnailUrl } from '../googleDrive/thumbnailUrl'
 import { deleteGoogleDriveFile, uploadImageToGoogleDrive } from '../googleDrive/upload'
 import {
@@ -43,11 +43,10 @@ export async function persistUploadedSubmissionImages(
     if (!clientId) {
       throw new Error('Thiếu VITE_GOOGLE_OAUTH_CLIENT_ID trong file .env')
     }
-    driveToken =
-      getStoredGoogleDriveAccessToken() ?? (await refreshGoogleDriveTokenSilent(clientId)) ?? undefined
+    driveToken = getStoredGoogleDriveAccessToken() ?? undefined
     if (!driveToken) {
       throw new Error(
-        'Chưa đăng nhập Google Drive. Bấm «Kết nối Google Drive» trước khi tải ảnh.'
+        'Chưa có quyền Google Drive trong phiên này. Vào Cài đặt → Kết nối Google Drive (hoặc đăng nhập lại app bằng Google) rồi thử tải ảnh lại — không dùng popup OAuth khi chuyển ảnh/OCR.'
       )
     }
     driveFolderId = getEffectiveDriveUploadFolderId()
