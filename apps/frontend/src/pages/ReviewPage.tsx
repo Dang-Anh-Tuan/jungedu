@@ -1,5 +1,12 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import {
+  DEFAULT_RUBRIC_CRITERIA,
+  gradingRubricScoresEqual,
+  mergeGradingScoresWithCriteria,
+  sumGradingScores,
+  type GradingRubricScores
+} from '../lib/rubric'
 import { useAppStore } from '../state/appStore'
 import type { GradingMistake, GradingResult } from '../types'
 
@@ -45,8 +52,8 @@ function clampRubricValue(v: number): number {
   return Math.max(0, Math.min(10, Math.round(v * 10) / 10))
 }
 
-function scoreFromRubric(rubric: GradingResult['rubric']): number {
-  const total = rubric.content + rubric.grammar + rubric.creativity + rubric.presentation
+function scoreFromRubricDraft(draft: GradingRubricScores): number {
+  const total = sumGradingScores(draft)
   return Math.max(0, Math.min(10, Math.round(total * 10) / 10))
 }
 
@@ -197,9 +204,19 @@ export default function ReviewPage() {
   const { submissionId } = useParams()
 
   const submissions = useAppStore((s) => s.submissions)
+  const exams = useAppStore((s) => s.exams)
   const setGradingResult = useAppStore((s) => s.setGradingResult)
 
   const submission = submissions.find((s) => s.id === submissionId)
+  const exam = useMemo(
+    () => (submission ? exams.find((e) => e.id === submission.examId) : undefined),
+    [submission, exams]
+  )
+  const criteria = useMemo(
+    () => (exam?.rubric?.length ? exam.rubric : DEFAULT_RUBRIC_CRITERIA),
+    [exam?.rubric]
+  )
+
   const initial = submission?.gradingResult
 
   const combinedCorrectedText = useMemo(() => {
@@ -207,8 +224,8 @@ export default function ReviewPage() {
     return submission.ocrPages.map((p) => p.correctedText).join('\n')
   }, [submission])
 
-  const [rubricDraft, setRubricDraft] = useState<GradingResult['rubric']>(
-    initial?.rubric ?? { content: 0, grammar: 0, creativity: 0, presentation: 0 }
+  const [rubricDraft, setRubricDraft] = useState<GradingRubricScores>(() =>
+    mergeGradingScoresWithCriteria(initial?.rubric, criteria)
   )
   const [strengthsText, setStrengthsText] = useState<string>(
     normalizeStrengthsInput(initial?.strengths as unknown[] | undefined).join('\n')
@@ -226,12 +243,12 @@ export default function ReviewPage() {
 
   useEffect(() => {
     if (!initial) return
-    setRubricDraft(initial.rubric)
+    setRubricDraft(mergeGradingScoresWithCriteria(initial.rubric, criteria))
     setStrengthsText(normalizeStrengthsInput(initial.strengths as unknown[] | undefined).join('\n'))
     setTeacherComment(initial.teacherComment ?? '')
-  }, [initial?.rubric, initial?.strengths, initial?.teacherComment])
+  }, [initial?.rubric, initial?.strengths, initial?.teacherComment, criteria])
 
-  const score = scoreFromRubric(rubricDraft)
+  const score = scoreFromRubricDraft(rubricDraft)
   const strengths = strengthsText
     .split('\n')
     .map((s) => s.trim())
@@ -241,7 +258,7 @@ export default function ReviewPage() {
     if (!initial) return null
     return {
       ...initial,
-      rubric: rubricDraft,
+      rubric: mergeGradingScoresWithCriteria(rubricDraft, criteria),
       score,
       strengths,
       teacherComment,
@@ -262,16 +279,16 @@ export default function ReviewPage() {
         next.score !== initial.score ||
         next.teacherComment !== initial.teacherComment ||
         initialStrengths !== strengthsText ||
-        next.rubric.content !== initial.rubric.content ||
-        next.rubric.grammar !== initial.rubric.grammar ||
-        next.rubric.creativity !== initial.rubric.creativity ||
-        next.rubric.presentation !== initial.rubric.presentation
+        !gradingRubricScoresEqual(
+          mergeGradingScoresWithCriteria(next.rubric, criteria),
+          mergeGradingScoresWithCriteria(initial.rubric, criteria)
+        )
       if (shouldSave) {
         setGradingResult(submission.id, next)
       }
     }, 500)
     return () => clearTimeout(saveTimeout.current)
-  }, [rubricDraft, score, teacherComment, strengthsText, initial, submission, setGradingResult])
+  }, [rubricDraft, score, teacherComment, strengthsText, initial, submission, setGradingResult, criteria])
 
   if (!submission) {
     return (
@@ -498,61 +515,26 @@ export default function ReviewPage() {
                 </div>
                 
                 <div className="xl:w-[32%] xl:min-w-[120px] flex flex-col justify-center xl:border-r border-slate-100 xl:pr-4">
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-600 items-center">
-                    <span>Nội dung</span>
-                    <input
-                      type="number"
-                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
-                      value={rubricDraft.content}
-                      step="0.5"
-                      min={0}
-                      max={10}
-                      onChange={(e) =>
-                        setRubricDraft((prev) => ({ ...prev, content: clampRubricValue(Number(e.target.value)) }))
-                      }
-                    />
-                    <span>Ngữ pháp</span>
-                    <input
-                      type="number"
-                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
-                      value={rubricDraft.grammar}
-                      step="0.5"
-                      min={0}
-                      max={10}
-                      onChange={(e) =>
-                        setRubricDraft((prev) => ({ ...prev, grammar: clampRubricValue(Number(e.target.value)) }))
-                      }
-                    />
-                    <span>Sáng tạo</span>
-                    <input
-                      type="number"
-                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
-                      value={rubricDraft.creativity}
-                      step="0.5"
-                      min={0}
-                      max={10}
-                      onChange={(e) =>
-                        setRubricDraft((prev) => ({
-                          ...prev,
-                          creativity: clampRubricValue(Number(e.target.value))
-                        }))
-                      }
-                    />
-                    <span>Trình bày</span>
-                    <input
-                      type="number"
-                      className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
-                      value={rubricDraft.presentation}
-                      step="0.5"
-                      min={0}
-                      max={10}
-                      onChange={(e) =>
-                        setRubricDraft((prev) => ({
-                          ...prev,
-                          presentation: clampRubricValue(Number(e.target.value))
-                        }))
-                      }
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-xs text-slate-600 items-center">
+                    {criteria.map((c) => (
+                      <React.Fragment key={c.id}>
+                        <span className="leading-tight">{c.label}</span>
+                        <input
+                          type="number"
+                          className="rounded border border-slate-200 px-2 py-1 text-right text-slate-800"
+                          value={rubricDraft[c.id] ?? 0}
+                          step="0.5"
+                          min={0}
+                          max={10}
+                          onChange={(e) =>
+                            setRubricDraft((prev) => ({
+                              ...prev,
+                              [c.id]: clampRubricValue(Number(e.target.value))
+                            }))
+                          }
+                        />
+                      </React.Fragment>
+                    ))}
                   </div>
                 </div>
 

@@ -19,6 +19,8 @@ export { uploadSubmissionImageDataUrl } from './storageUpload'
 export { subscribeFirestoreCollections, type FirestoreSyncDispatch } from './firestoreSync'
 export {
   saveDriveUploadFolderPrefToFirestore,
+  saveTeacherGradingExperienceToFirestore,
+  subscribeAppSettings,
   subscribeAppSettingsDriveUploadFolder
 } from './firestoreAppSettings'
 export { rewriteFirestoreError } from './firestoreErrors'

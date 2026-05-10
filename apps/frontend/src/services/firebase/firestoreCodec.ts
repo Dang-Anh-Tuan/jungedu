@@ -1,5 +1,9 @@
 import type { DocumentReference } from 'firebase/firestore'
 import { googleDriveThumbnailUrl } from '../googleDrive/thumbnailUrl'
+import {
+  normalizeExamRubricFromFirestore,
+  normalizeGradingRubricScoresFromFirestore
+} from '../../lib/rubric'
 import type {
   Exam,
   GradingMistake,
@@ -104,13 +108,7 @@ export function serializeSchoolClass(c: SchoolClass): Record<string, unknown> {
 }
 
 export function normalizeExam(docId: string, raw: Record<string, unknown>): Exam {
-  const rubricRaw = raw.rubric as Record<string, unknown> | undefined
-  const rubric = {
-    content: typeof rubricRaw?.content === 'number' ? rubricRaw.content : 4,
-    grammar: typeof rubricRaw?.grammar === 'number' ? rubricRaw.grammar : 2,
-    creativity: typeof rubricRaw?.creativity === 'number' ? rubricRaw.creativity : 2,
-    presentation: typeof rubricRaw?.presentation === 'number' ? rubricRaw.presentation : 2
-  }
+  const rubric = normalizeExamRubricFromFirestore(raw.rubric)
   const style = raw.teacherStyle
   const teacherStyle: Exam['teacherStyle'] =
     style === 'neutral' || style === 'strict' || style === 'encouraging' ? style : 'encouraging'
@@ -177,12 +175,7 @@ function normalizeGradingResult(raw: Record<string, unknown> | null | undefined)
     : []
   return {
     score: typeof raw.score === 'number' && Number.isFinite(raw.score) ? raw.score : 0,
-    rubric: {
-      content: typeof rubricRaw?.content === 'number' ? rubricRaw.content : 4,
-      grammar: typeof rubricRaw?.grammar === 'number' ? rubricRaw.grammar : 2,
-      creativity: typeof rubricRaw?.creativity === 'number' ? rubricRaw.creativity : 2,
-      presentation: typeof rubricRaw?.presentation === 'number' ? rubricRaw.presentation : 2
-    },
+    rubric: normalizeGradingRubricScoresFromFirestore(rubricRaw),
     strengths: stringArray(raw.strengths),
     mistakes,
     rewriteSuggestion: typeof raw.rewriteSuggestion === 'string' ? raw.rewriteSuggestion : '',

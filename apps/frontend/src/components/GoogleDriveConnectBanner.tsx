@@ -7,7 +7,12 @@ import {
   type DriveUploadFolderPrefState
 } from '../services/googleDrive/uploadFolderPref'
 
-export default function GoogleDriveConnectBanner() {
+type Props = {
+  /** Giao diện gọn cho trang Cài đặt: chỉ ô dán đường dẫn + nút cập nhật. */
+  compact?: boolean
+}
+
+export default function GoogleDriveConnectBanner({ compact }: Props) {
   const folderPref = useDriveUploadFolderPref()
 
   const [folderInput, setFolderInput] = useState('')
@@ -32,15 +37,28 @@ export default function GoogleDriveConnectBanner() {
       toast.error('Không đọc được ID thư mục. Dán URL (…/folders/…) hoặc chỉ chuỗi ID.')
       return
     }
-    void persistPref({ kind: 'folder', folderId: id }, 'Đã lưu thư mục lên Firestore')
+    void persistPref({ kind: 'folder', folderId: id }, 'Đã cập nhật thư mục lưu ảnh')
   }
 
-  const handleFolderRoot = () => {
-    void persistPref({ kind: 'root' }, 'Ảnh sẽ lưu ở gốc My Drive (bỏ qua .env)')
-  }
-
-  const handleFolderEnv = () => {
-    void persistPref({ kind: 'env' }, 'Đã dùng lại mặc định từ .env (nếu có)')
+  if (compact) {
+    return (
+      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+        <input
+          type="text"
+          value={folderInput}
+          onChange={(e) => setFolderInput(e.target.value)}
+          placeholder="Dán URL hoặc ID thư mục Google Drive"
+          className="flex-1 min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400"
+        />
+        <button
+          type="button"
+          onClick={handleSaveFolder}
+          className="rounded-xl bg-sky-700 px-4 py-2 font-medium text-white hover:bg-sky-800 whitespace-nowrap"
+        >
+          Cập nhật thư mục
+        </button>
+      </div>
+    )
   }
 
   const prefLabel =
@@ -49,6 +67,14 @@ export default function GoogleDriveConnectBanner() {
       : folderPref.kind === 'root'
         ? 'Gốc My Drive'
         : 'Theo .env hoặc gốc My Drive'
+
+  const handleFolderRoot = () => {
+    void persistPref({ kind: 'root' }, 'Ảnh sẽ lưu ở gốc My Drive (bỏ qua .env)')
+  }
+
+  const handleFolderEnv = () => {
+    void persistPref({ kind: 'env' }, 'Đã dùng lại mặc định từ .env (nếu có)')
+  }
 
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-slate-800 space-y-4">

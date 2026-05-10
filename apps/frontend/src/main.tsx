@@ -5,10 +5,8 @@ import { onAuthStateChanged } from 'firebase/auth'
 import { toast } from 'sonner'
 import App from './App'
 import { auth } from './lib/firebase'
-import {
-  subscribeAppSettingsDriveUploadFolder,
-  subscribeFirestoreCollections
-} from './services/firebase'
+import { subscribeAppSettings, subscribeFirestoreCollections } from './services/firebase'
+import { setTeacherGradingExperienceCache } from './services/appSettings/teacherGradingExperiencePref'
 import { useAppStore } from './state/appStore'
 import { useAuthStore } from './state/authStore'
 import './index.css'
@@ -27,6 +25,7 @@ onAuthStateChanged(auth, (user) => {
   if (!user) {
     useAuthStore.getState().setUnauthenticated()
     useAppStore.getState().resetForLogout()
+    setTeacherGradingExperienceCache('')
     return
   }
 
@@ -45,7 +44,7 @@ onAuthStateChanged(auth, (user) => {
     }
   })
 
-  stopSettingsSync = subscribeAppSettingsDriveUploadFolder(user.uid, (message) => {
+  stopSettingsSync = subscribeAppSettings(user.uid, (message) => {
     toast.error(`Firestore [settings/app]: ${message}`)
   })
 })

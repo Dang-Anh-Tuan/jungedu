@@ -59,22 +59,27 @@ export default function ClassesPage() {
 
   async function importExcelForClass(classId: string, file: File | null): Promise<boolean> {
     if (!file) return false
-    let rows: ReturnType<typeof parseExcelToStudentRows>
+    let parsed: ReturnType<typeof parseExcelToStudentRows>
     try {
       const buf = await file.arrayBuffer()
-      rows = parseExcelToStudentRows(buf)
+      parsed = parseExcelToStudentRows(buf)
     } catch {
       toast.error('Không đọc được file Excel/CSV. Thử định dạng .xlsx hoặc kiểm tra file không bị khóa/mật khẩu.')
       return false
     }
+    const { rows, skippedMissingCodeOrName } = parsed
     if (rows.length === 0) {
       toast.error(
-        'Không đọc được dòng nào. Kiểm tra sheet đầu: dòng 1 là tiêu đề cột, có ít nhất cột «Họ và tên» (hoặc «Họ tên»).'
+        'Không đọc được dòng hợp lệ nào. Mỗi học sinh cần đủ «Mã HS» và «Họ tên»; «Học lực» và «Ghi chú» là tuỳ chọn. Kiểm tra sheet đầu và tiêu đề cột.'
       )
       return false
     }
     await importStudentsForClass(classId, rows)
-    toast.success(`Đã cập nhật danh sách: ${rows.length} học sinh (thay toàn bộ).`)
+    const skipHint =
+      skippedMissingCodeOrName > 0
+        ? ` Đã bỏ qua ${skippedMissingCodeOrName} dòng thiếu mã hoặc thiếu tên.`
+        : ''
+    toast.success(`Đã cập nhật danh sách: ${rows.length} học sinh (thay toàn bộ).${skipHint}`)
     return true
   }
 
@@ -203,13 +208,13 @@ export default function ClassesPage() {
           <strong>Dòng 1</strong>: tiêu đề cột (khuyến nghị). <strong>Dòng 2 trở đi</strong>: mỗi dòng một học sinh.
         </li>
         <li>
-          <strong className="text-slate-900">Họ và tên</strong> —{' '}
-          <span className="text-emerald-800 font-medium">bắt buộc</span> – nhận diện tiêu đề kiểu «Họ và tên», «Họ tên», «Name»…
+          <strong className="text-slate-900">Mã học sinh</strong> —{' '}
+          <span className="text-emerald-800 font-medium">bắt buộc</span> («Mã HS», «Mã học sinh», «Code»…) – khớp phần đầu tên file khi ghép ảnh (
+          <code className="text-xs bg-white px-1 rounded border border-slate-200">HS01_1.jpg</code>).
         </li>
         <li>
-          <strong className="text-slate-900">Mã học sinh</strong> —{' '}
-          <span className="text-slate-600">tuỳ chọn</span> («Mã HS», «Mã học sinh», «Code»…) – dùng khi ghép ảnh nhiều học sinh (
-          <code className="text-xs bg-white px-1 rounded border border-slate-200">HS01_1.jpg</code>).
+          <strong className="text-slate-900">Họ và tên</strong> —{' '}
+          <span className="text-emerald-800 font-medium">bắt buộc</span> – nhận diện tiêu đề kiểu «Họ và tên», «Họ tên», «Name»…
         </li>
         <li>
           <strong className="text-slate-900">Học lực</strong> —{' '}
@@ -221,7 +226,7 @@ export default function ClassesPage() {
         </li>
       </ul>
       <p className="text-xs text-slate-500 pt-2 border-t border-slate-200">
-        Cột thiếu có thể để trống. Thứ tự cột không bắt buộc miễn là tiêu đề khớp một trong các gợi ý trên.
+        «Học lực» và «Ghi chú» có thể để trống. Thứ tự cột không bắt buộc miễn là tiêu đề khớp một trong các gợi ý trên.
       </p>
     </div>
   )

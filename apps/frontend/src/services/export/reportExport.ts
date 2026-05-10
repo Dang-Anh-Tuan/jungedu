@@ -45,7 +45,9 @@ function mistakeTypeVi(t: GradingMistake['type']): string {
 }
 
 function buildAnnotatedEssayParts(essay: string, mistakes: GradingMistake[]) {
-  const parts: Array<string | { text: string; color: string; background: string }> = []
+  const parts: Array<
+    string | { text: string; color?: string; background?: string; italics?: boolean }
+  > = []
   if (!essay.trim()) {
     parts.push('(Không có)')
     return parts
@@ -78,7 +80,12 @@ function buildAnnotatedEssayParts(essay: string, mistakes: GradingMistake[]) {
       background: matched.type === 'spelling' || matched.type === 'grammar' ? '#FECACA' : '#FDE68A'
     })
     if (matched.suggestion) {
-      parts.push(` (${matched.suggestion})`)
+      parts.push({
+        text: ` (${matched.suggestion})`,
+        italics: true,
+        color: '#166534',
+        background: '#DCFCE7'
+      })
     }
     cursor = start + matched.original.length
   }
@@ -254,6 +261,10 @@ export function exportSelectedDetailedReviewPdf({
     const strengths = grading.strengths.length > 0 ? grading.strengths : ['(Không có)']
     const mistakes = grading.mistakes.length > 0 ? grading.mistakes.map(formatMistake) : ['(Không có)']
     const annotatedEssayParts = buildAnnotatedEssayParts(essay, grading.mistakes)
+    const rubricTableBody: TableCell[][] = [
+      [{ text: 'Mục', style: 'smallTableHeader' }, { text: 'Điểm', style: 'smallTableHeader' }],
+      ...exam.rubric.map((c) => [c.label, String(grading.rubric[c.id] ?? '—')])
+    ]
 
     detailedContents.push(
       { text: `${exam.title} - Phiếu chấm`, style: 'title' },
@@ -264,13 +275,7 @@ export function exportSelectedDetailedReviewPdf({
         table: {
           headerRows: 1,
           widths: ['*', 80],
-          body: [
-            [{ text: 'Mục', style: 'smallTableHeader' }, { text: 'Điểm', style: 'smallTableHeader' }],
-            ['Nội dung', String(grading.rubric.content)],
-            ['Ngữ pháp', String(grading.rubric.grammar)],
-            ['Sáng tạo', String(grading.rubric.creativity)],
-            ['Trình bày', String(grading.rubric.presentation)]
-          ]
+          body: rubricTableBody
         },
         layout: 'lightHorizontalLines',
         margin: [0, 0, 0, 10]
@@ -279,7 +284,7 @@ export function exportSelectedDetailedReviewPdf({
       { ul: strengths, margin: [0, 0, 0, 8] },
       { text: 'Nhận xét giáo viên', style: 'sectionTitle' },
       { text: safeText(grading.teacherComment) || '(Không có)', margin: [0, 0, 0, 8] },
-      { text: 'Bài làm đối chiếu (đánh dấu lỗi như màn chấm)', style: 'sectionTitle' },
+      { text: 'Bài làm đối chiếu', style: 'sectionTitle' },
       {
         text: annotatedEssayParts,
         margin: [0, 0, 0, 8],

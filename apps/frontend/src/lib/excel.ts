@@ -7,8 +7,14 @@ export type ParsedStudentRow = {
   notes?: string
 }
 
+export type ParseStudentRowsResult = {
+  rows: ParsedStudentRow[]
+  /** Số dòng bị bỏ qua vì thiếu Mã HS hoặc thiếu Họ tên (cả hai đều bắt buộc). */
+  skippedMissingCodeOrName: number
+}
+
 /** Sheet đầu tiên; nhận diện cột theo dòng tiêu đề (hoặc cột A/B nếu không có tiêu đề). */
-export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
+export function parseExcelToStudentRows(file: ArrayBuffer): ParseStudentRowsResult {
   let wb: ReturnType<typeof XLSX.read>
   try {
     wb = XLSX.read(file, { type: 'array' })
@@ -16,7 +22,7 @@ export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
     throw new Error('INVALID_XLSX')
   }
   const sheetName = wb.SheetNames[0]
-  if (!sheetName) return []
+  if (!sheetName) return { rows: [], skippedMissingCodeOrName: 0 }
   const sheet = wb.Sheets[sheetName]
   const rows = XLSX.utils.sheet_to_json<string[]>(sheet, {
     header: 1,
@@ -24,7 +30,7 @@ export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
     blankrows: false,
     defval: ''
   }) as string[][]
-  if (!rows.length) return []
+  if (!rows.length) return { rows: [], skippedMissingCodeOrName: 0 }
 
   const header = (rows[0] ?? []).map((c) => String(c ?? '').trim().toLowerCase())
 
@@ -67,13 +73,21 @@ export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
   if (nameCol < 0) nameCol = 0
 
   const out: ParsedStudentRow[] = []
+  let skippedMissingCodeOrName = 0
+
   for (let r = startRow; r < rows.length; r++) {
     const row = rows[r] ?? []
     const name = String(row[nameCol] ?? '').trim()
     const codeRaw = codeCol >= 0 ? String(row[codeCol] ?? '').trim() : ''
     const hocRaw = hocLucCol >= 0 ? String(row[hocLucCol] ?? '').trim() : ''
     const notesRaw = notesCol >= 0 ? String(row[notesCol] ?? '').trim() : ''
-    if (!name) continue
+
+    if (!name && !codeRaw) continue
+    if (!name || !codeRaw) {
+      skippedMissingCodeOrName += 1
+      continue
+    }
+
     out.push({
       name,
       studentCode: codeRaw || undefined,
@@ -81,5 +95,5 @@ export function parseExcelToStudentRows(file: ArrayBuffer): ParsedStudentRow[] {
       notes: notesRaw || undefined
     })
   }
-  return out
+  return { rows: out, skippedMissingCodeOrName }
 }

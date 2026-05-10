@@ -1,3 +1,7 @@
+import type { GradingRubricScores, RubricCriterion } from './lib/rubric'
+
+export type { GradingRubricScores, RubricCriterion }
+
 export type SchoolClass = {
   id: string
   name: string
@@ -18,12 +22,8 @@ export type Student = {
   customRules?: string[]
 }
 
-export type ExamRubric = {
-  content: number
-  grammar: number
-  creativity: number
-  presentation: number
-}
+/** Danh sách tiêu chí rubric (có thể thêm/bớt đầu mục). */
+export type ExamRubric = RubricCriterion[]
 
 export type Exam = {
   id: string
@@ -79,7 +79,8 @@ export type Submission = {
   teacherRevisedAt?: string
 }
 
-export type GradingRubricBreakdown = ExamRubric
+/** Điểm từng tiêu chí (khóa trùng `RubricCriterion.id` của bài kiểm tra). */
+export type GradingRubricBreakdown = GradingRubricScores
 
 export type GradingMistake = {
   type: 'spelling' | 'repeat' | 'grammar' | 'missing_idea' | 'structure' | 'suggestion' | 'other'

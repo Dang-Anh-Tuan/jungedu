@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { sumGradingScores } from '../lib/rubric'
+import { useTeacherGradingExperiencePref } from '../services/appSettings/teacherGradingExperiencePref'
 import { useAppStore } from '../state/appStore'
 import { runAiGrade } from '../services/aiClient'
 
@@ -19,6 +21,7 @@ function mistakeTypeVi(t: string) {
 export default function GradingPage() {
   const navigate = useNavigate()
   const { submissionId } = useParams()
+  const teacherGradingExperience = useTeacherGradingExperiencePref()
 
   const submissions = useAppStore((s) => s.submissions)
   const exams = useAppStore((s) => s.exams)
@@ -63,9 +66,9 @@ export default function GradingPage() {
           name: student.name,
           tags: student.tags,
           notes: student.notes,
-          customRules: student.customRules,
           hocLuc: student.hocLuc
-        }
+        },
+        teacherGradingExperience
       })
 
       await setGradingResult(submission.id, result)
@@ -123,12 +126,8 @@ export default function GradingPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2 space-y-5 shadow-sm">
             <div className="text-2xl font-semibold text-slate-900">Điểm gợi ý: {grading.score.toFixed(1)}/10</div>
             <p className="text-sm text-slate-500">
-              Tổng rubric AI:{' '}
-              {grading.rubric.content +
-                grading.rubric.grammar +
-                grading.rubric.creativity +
-                grading.rubric.presentation}{' '}
-              (theo trọng số đã nhập — chỉ mang tính tham khảo)
+              Tổng điểm theo rubric (cộng các mục): {sumGradingScores(grading.rubric).toFixed(1)} (tham khảo; điểm tổng
+              hiển thị là score)
             </p>
 
             <div className="border-t border-slate-100 pt-4 space-y-2">
@@ -175,10 +174,11 @@ export default function GradingPage() {
             <div className="border-t border-slate-100 pt-4">
               <div className="text-sm text-slate-500 mb-2">Chi tiết rubric</div>
               <div className="text-sm space-y-1 text-slate-700">
-                <div>Nội dung: {grading.rubric.content}</div>
-                <div>Ngữ pháp: {grading.rubric.grammar}</div>
-                <div>Sáng tạo: {grading.rubric.creativity}</div>
-                <div>Trình bày: {grading.rubric.presentation}</div>
+                {exam?.rubric.map((c) => (
+                  <div key={c.id}>
+                    {c.label}: {grading.rubric[c.id] ?? '—'}
+                  </div>
+                ))}
               </div>
             </div>
 

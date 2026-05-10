@@ -8,6 +8,7 @@ import type { Submission, SubmissionImageFile } from '../types'
 import { fileToDataUrl } from '../lib/fileDataUrl'
 import { sortFilesNatural } from '../lib/bulkFiles'
 import { runImageToText } from '../services/imageToText'
+import { getTeacherGradingExperienceCached } from '../services/appSettings/teacherGradingExperiencePref'
 import { runAiGrade } from '../services/aiClient'
 import { submissionAiMatchPercent } from '../lib/textSimilarity'
 import { getSubmissionImageStorageMode } from '../services/config'
@@ -331,8 +332,9 @@ export default function SubmissionImportPage() {
         },
         student: {
           name: student.name, tags: student.tags, notes: student.notes,
-          customRules: student.customRules, hocLuc: student.hocLuc
-        }
+          hocLuc: student.hocLuc
+        },
+        teacherGradingExperience: getTeacherGradingExperienceCached()
       })
       await useAppStore.getState().setGradingResult(sub.id, result)
       if (!silent) toast.success('Đã chấm xong.')

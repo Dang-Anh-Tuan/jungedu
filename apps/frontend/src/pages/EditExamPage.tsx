@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import {
+  createRubricCriterionId,
+  totalRubricWeight,
+  type RubricCriterion
+} from '../lib/rubric'
 import { useAppStore } from '../state/appStore'
-import type { ExamRubric } from '../types'
 
 const teacherStyleOptions = ['encouraging', 'neutral', 'strict'] as const
 
@@ -27,12 +31,7 @@ export default function EditExamPage() {
   const [grade, setGrade] = useState(4)
   const [requirements, setRequirements] = useState('')
   const [teacherStyle, setTeacherStyle] = useState<(typeof teacherStyleOptions)[number]>('encouraging')
-  const [rubric, setRubric] = useState<ExamRubric>({
-    content: 4,
-    grammar: 2,
-    creativity: 2,
-    presentation: 2
-  })
+  const [rubric, setRubric] = useState<RubricCriterion[]>([])
 
   useEffect(() => {
     if (!exam) return
@@ -42,13 +41,10 @@ export default function EditExamPage() {
     setGrade(exam.grade)
     setRequirements(exam.requirements)
     setTeacherStyle(exam.teacherStyle)
-    setRubric(exam.rubric)
+    setRubric(exam.rubric.map((c) => ({ ...c })))
   }, [exam])
 
-  const totalRubric = useMemo(
-    () => rubric.content + rubric.grammar + rubric.creativity + rubric.presentation,
-    [rubric]
-  )
+  const totalRubric = useMemo(() => totalRubricWeight(rubric), [rubric])
 
   const selectedClass = classes.find((c) => c.id === classId)
   const canSave =
@@ -56,17 +52,41 @@ export default function EditExamPage() {
     !!classId &&
     classes.some((c) => c.id === classId) &&
     !!title.trim() &&
-    classes.length > 0
+    classes.length > 0 &&
+    rubric.some((c) => c.label.trim().length > 0)
+
+  function addCriterion() {
+    setRubric((r) => [...r, { id: createRubricCriterionId(), label: 'Tiêu chí mới', weight: 1 }])
+  }
+
+  function removeCriterion(id: string) {
+    setRubric((r) => (r.length <= 1 ? r : r.filter((c) => c.id !== id)))
+  }
+
+  function updateCriterion(id: string, patch: Partial<RubricCriterion>) {
+    setRubric((r) => r.map((c) => (c.id === id ? { ...c, ...patch } : c)))
+  }
 
   function onSave() {
     if (!examId || !canSave) return
+    const cleaned = rubric
+      .map((c) => ({
+        ...c,
+        label: c.label.trim(),
+        weight: Number.isFinite(c.weight) ? Math.max(0, c.weight) : 0
+      }))
+      .filter((c) => c.label.length > 0)
+    if (cleaned.length === 0) {
+      toast.error('Cần ít nhất một tiêu chí rubric có tên.')
+      return
+    }
     updateExam(examId, {
       classId,
       title: title.trim(),
       subject: subject.trim(),
       grade: Number(grade),
       requirements: requirements.trim(),
-      rubric,
+      rubric: cleaned,
       teacherStyle
     })
     toast.success('Đã lưu thay đổi.')
@@ -190,25 +210,53 @@ export default function EditExamPage() {
             />
           </label>
 
-          <div className="grid grid-cols-2 gap-3">
-            {(
-              [
-                ['content', 'Nội dung'],
-                ['grammar', 'Ngữ pháp / diễn đạt'],
-                ['creativity', 'Sáng tạo'],
-                ['presentation', 'Trình bày']
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="block text-sm">
-                <span className="text-slate-600">{label}</span>
-                <input
-                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                  type="number"
-                  value={rubric[key]}
-                  onChange={(e) => setRubric((r) => ({ ...r, [key]: Number(e.target.value) }))}
-                />
-              </label>
-            ))}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Đầu mục & trọng số</span>
+              <button
+                type="button"
+                onClick={addCriterion}
+                className="text-sm text-emerald-700 font-medium hover:underline"
+              >
+                + Thêm tiêu chí
+              </button>
+            </div>
+            <ul className="space-y-2">
+              {rubric.map((c) => (
+                <li
+                  key={c.id}
+                  className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2"
+                >
+                  <label className="block text-sm flex-1 min-w-[140px]">
+                    <span className="text-xs text-slate-500">Tên tiêu chí</span>
+                    <input
+                      className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                      value={c.label}
+                      onChange={(e) => updateCriterion(c.id, { label: e.target.value })}
+                    />
+                  </label>
+                  <label className="block text-sm w-24">
+                    <span className="text-xs text-slate-500">Trọng số</span>
+                    <input
+                      className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
+                      type="number"
+                      min={0}
+                      step={0.5}
+                      value={c.weight}
+                      onChange={(e) => updateCriterion(c.id, { weight: Number(e.target.value) })}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={rubric.length <= 1}
+                    onClick={() => removeCriterion(c.id)}
+                    className="text-xs text-red-600 hover:text-red-700 disabled:opacity-30 px-2 py-2"
+                  >
+                    Xóa
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
           <p className="text-sm text-slate-500">Tổng trọng số rubric: {totalRubric}</p>
         </div>

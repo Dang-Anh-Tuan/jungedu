@@ -1,11 +1,6 @@
 import { z } from 'zod'
 
-export const GradingRubricSchema = z.object({
-  content: z.number(),
-  grammar: z.number(),
-  creativity: z.number(),
-  presentation: z.number()
-})
+import type { RubricCriterion } from '../../lib/rubric'
 
 export const GradingMistakeSchema = z.object({
   type: z.enum(['spelling', 'repeat', 'grammar', 'missing_idea', 'structure', 'suggestion', 'other']),
@@ -14,11 +9,18 @@ export const GradingMistakeSchema = z.object({
   explanation: z.string().optional()
 })
 
-export const GradingResultSchema = z.object({
-  score: z.number(),
-  rubric: GradingRubricSchema,
-  strengths: z.array(z.string()),
-  mistakes: z.array(GradingMistakeSchema),
-  rewriteSuggestion: z.string(),
-  teacherComment: z.string()
-})
+export function buildGradingResultSchema(criteria: RubricCriterion[]) {
+  const ids = criteria.map((c) => c.id)
+  return z.object({
+    score: z.number(),
+    rubric: z
+      .record(z.string(), z.number())
+      .refine((r) => ids.every((id) => typeof r[id] === 'number'), {
+        message: 'rubric must include a numeric score for each criterion id'
+      }),
+    strengths: z.array(z.string()),
+    mistakes: z.array(GradingMistakeSchema),
+    rewriteSuggestion: z.string(),
+    teacherComment: z.string()
+  })
+}
