@@ -1,6 +1,6 @@
 /**
  * Lớp application: chấm bài qua AI.
- * Đổi vendor: thay `gradeEssayPipeline` (hiện Puter) bằng adapter OpenAI/backend.
+ * Đổi vendor: thay `gradeEssayPipeline` (Gemini) bằng adapter backend khác nếu cần.
  */
 import type { Exam, GradingResult, Student } from '../types'
 import { gradeEssayPipeline } from '../services/grading/pipeline'

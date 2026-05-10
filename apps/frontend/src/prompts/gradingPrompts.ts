@@ -64,6 +64,6 @@ export function buildGradingUserMessageSuffix(rubricJsonExample: string): string
   )
 }
 
-/** Gợi ý cuối prompt để model chỉ trả JSON (Puter/OpenAI). */
+/** Gợi ý cuối prompt để model chỉ trả JSON (Gemini / OpenAI). */
 export const JSON_ONLY_FOLLOWUP =
   'Return ONLY valid JSON that matches the expected schema. Do not wrap in markdown code fences unless necessary; output must be parseable JSON.'

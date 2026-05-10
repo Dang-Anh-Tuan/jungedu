@@ -1,4 +1,4 @@
-/** Chuẩn hoá phản hồi lỏng kiểu từ Puter / SDK AI. */
+/** Chuẩn hoá phản hồi lỏng kiểu từ các SDK AI (legacy / OpenAI shape). */
 export function extractTextFromAiChatResponse(resp: unknown): string {
   if (resp == null) return ''
   if (typeof resp === 'string') return resp.trim()

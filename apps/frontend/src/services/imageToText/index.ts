@@ -15,9 +15,9 @@ export async function runImageToText(file: File): Promise<ImageToTextResult> {
   const p = IMAGE_TO_TEXT_PROVIDER as ImageToTextProviderId
 
   switch (p) {
-    case 'puter': {
-      const { runPuterVision } = await import('./providers/puterVision')
-      return runPuterVision(file)
+    case 'gemini': {
+      const { runGeminiVision } = await import('./providers/geminiVision')
+      return runGeminiVision(file)
     }
     case 'openai': {
       const { runOpenAiVision } = await import('./providers/openaiVision')

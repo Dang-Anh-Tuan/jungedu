@@ -425,10 +425,15 @@ const vi = {
   },
   errors: {
     aiTimeout: '{{label}} timeout sau {{seconds}}s — thử lại nhé!',
-    puterEmptyResponse: 'Puter AI không trả về nội dung (JSON). Kiểm tra model / quota.',
+    geminiMissingKey: 'Thiếu VITE_GEMINI_API_KEY trong .env (Google AI Studio / Gemini API).',
+    geminiEmptyResponse: 'Gemini không trả về JSON hợp lệ. Kiểm tra model, quota và API key.',
+    geminiVisionEmpty: 'Gemini không trả về văn bản OCR. Kiểm tra model và ảnh đầu vào.',
     firestorePath: 'Firestore [{{path}}]: {{message}}',
     firestoreSettings: 'Firestore [settings/app]: {{message}}',
-    imageProvider: 'VITE_IMAGE_TO_TEXT_PROVIDER không hợp lệ: {{provider}}'
+    imageProvider: 'VITE_IMAGE_TO_TEXT_PROVIDER không hợp lệ: {{provider}}',
+    driveDownloadNotFound:
+      'Không đọc được ảnh trên Google Drive (404). Các mã file trong app thường gắn với tài khoản Google đã upload — nếu bạn đổi email đăng nhập, hãy đăng nhập lại đúng tài khoản đó, hoặc xóa ảnh cũ và Tải lên lại cho từng học sinh.',
+    driveDownloadFailed: 'Drive download: {{status}} — thử đăng nhập lại hoặc kết nối Drive trong Cài đặt.'
   }
 }
 

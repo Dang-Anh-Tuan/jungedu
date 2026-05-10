@@ -1,19 +1,39 @@
 /**
- * Đọc biến môi trường Vite — một chỗ để sau này thay provider (Puter → OpenAI, Firebase → API).
+ * Đọc biến môi trường Vite — AI: Google Gemini (API key), tuỳ chọn OpenAI cho vision.
  */
-export type ImageToTextProviderId = 'puter' | 'openai'
+export type ImageToTextProviderId = 'gemini' | 'openai'
 
-function normalizeImageToTextProvider(raw: string | undefined): ImageToTextProviderId {
-  const v = (raw ?? 'puter').trim().toLowerCase()
-  if (v === 'puter' || v === 'openai') return v
-  return 'puter'
+const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash'
+
+/** Chuẩn hoá id model (bỏ prefix `google/` nếu copy từ Puter cũ). */
+export function normalizeGeminiModelId(raw: string | undefined, fallback: string): string {
+  const s = (raw ?? fallback).trim()
+  if (s.startsWith('google/')) return s.slice('google/'.length)
+  return s || fallback
 }
 
-export const PUTER_GRADING_MODEL = import.meta.env.VITE_PUTER_GRADING_MODEL || 'google/gemini-2.5-flash'
+function normalizeImageToTextProvider(raw: string | undefined): ImageToTextProviderId {
+  const v = (raw ?? 'gemini').trim().toLowerCase()
+  /** Legacy `.env` từng dùng `puter` */
+  if (v === 'puter' || v === 'gemini' || v === 'google') return 'gemini'
+  if (v === 'openai') return 'openai'
+  return 'gemini'
+}
+
+/** API key Google AI Studio / Gemini API — bắt buộc cho chấm điểm & OCR khi dùng Gemini. */
+export const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || ''
+
+export const GEMINI_GRADING_MODEL = normalizeGeminiModelId(
+  import.meta.env.VITE_GEMINI_GRADING_MODEL || import.meta.env.VITE_GEMINI_MODEL,
+  DEFAULT_GEMINI_MODEL
+)
+
+export const GEMINI_VISION_MODEL = normalizeGeminiModelId(
+  import.meta.env.VITE_GEMINI_VISION_MODEL || import.meta.env.VITE_GEMINI_MODEL,
+  DEFAULT_GEMINI_MODEL
+)
 
 export const IMAGE_TO_TEXT_PROVIDER = normalizeImageToTextProvider(import.meta.env.VITE_IMAGE_TO_TEXT_PROVIDER)
-
-export const PUTER_VISION_MODEL = import.meta.env.VITE_PUTER_VISION_MODEL || 'google/gemini-2.5-flash'
 
 export type SubmissionImageStorageMode = 'firebase' | 'local' | 'gdrive'
 
@@ -26,12 +46,12 @@ export function getSubmissionImageStorageMode(): SubmissionImageStorageMode {
 
 export const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''
 export const OPENAI_API_BASE = import.meta.env.VITE_OPENAI_API_BASE || 'https://api.openai.com/v1'
-export const OPENAI_VISION_MODEL = import.meta.env.VITE_OPENAI_VISION_MODEL || 'google/gemini-2.5-flash'
+export const OPENAI_VISION_MODEL = import.meta.env.VITE_OPENAI_VISION_MODEL || 'gemini-2.5-flash'
 
 export function describeImageToTextBackend(): string {
   switch (IMAGE_TO_TEXT_PROVIDER) {
-    case 'puter':
-      return `Puter AI vision (${PUTER_VISION_MODEL})`
+    case 'gemini':
+      return `Gemini (${GEMINI_VISION_MODEL})`
     case 'openai':
       return `OpenAI Vision (${OPENAI_VISION_MODEL})`
     default:

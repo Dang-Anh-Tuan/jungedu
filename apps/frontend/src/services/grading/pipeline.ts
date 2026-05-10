@@ -7,9 +7,9 @@ import {
   formatRubricCriteriaForPrompt,
   rubricJsonShapeExample
 } from '../../prompts/gradingPrompts'
-import { PUTER_GRADING_MODEL } from '../config'
+import { GEMINI_GRADING_MODEL } from '../config'
 import { GradingMistakeSchema, buildGradingResultSchema } from './schemas'
-import { callPuterJson } from './puterJson'
+import { callGeminiJson } from './geminiJson'
 
 export type GradePipelineRequest = {
   essayText: string
@@ -18,7 +18,7 @@ export type GradePipelineRequest = {
   teacherGradingExperience?: string
 }
 
-/** Chấm rubric JSON qua Puter trực tiếp trên `essayText` (bản đã hiệu đính). */
+/** Chấm rubric JSON qua Gemini API (`VITE_GEMINI_API_KEY`) trên `essayText` (bản đã hiệu đính). */
 export async function gradeEssayPipeline(req: GradePipelineRequest): Promise<GradingResult> {
   const body = req.essayText.trim()
   return gradeWithRubric({
@@ -79,10 +79,10 @@ async function gradeWithRubric({
     }
   ]
 
-  const result = await callPuterJson({
+  const result = await callGeminiJson({
     messages,
     schema,
-    model: PUTER_GRADING_MODEL,
+    model: GEMINI_GRADING_MODEL,
     temperature: 0
   })
 

@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@heyputer/puter.js": "^2.2.15",
+    "@google/generative-ai": "^0.24.1",
     "exceljs": "^4.4.0",
     "firebase": "^12.12.1",
     "i18next": "^26.0.10",

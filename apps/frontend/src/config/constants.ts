@@ -3,7 +3,7 @@
  * Biến môi trường / vendor vẫn nằm trong `config/env.ts`.
  */
 export const TIMING = {
-  /** Gọi AI chat (Puter / sau này OpenAI). */
+  /** Gọi AI chat (Gemini / OpenAI). */
   AI_CHAT_TIMEOUT_MS: 3 * 60 * 1000,
   /** Tự lưu kinh nghiệm chấm trên trang Cài đặt. */
   TEACHER_EXPERIENCE_DEBOUNCE_MS: 650,
@@ -18,6 +18,6 @@ export const TIMING = {
 export const LIMITS = {
   /** Ký tự tối thiểu để coi là đoạn trích lỗi (Review). */
   MISTAKE_ORIGINAL_MIN_LEN: 2,
-  /** max_tokens khi gọi Puter chat (chấm điểm). */
+  /** maxOutputTokens khi gọi Gemini chấm điểm. */
   GRADING_MAX_TOKENS: 8192
 } as const

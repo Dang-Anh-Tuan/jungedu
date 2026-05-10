@@ -5,7 +5,7 @@ import { fileToDataUrl } from '../../../lib/fileDataUrl'
 
 export async function runOpenAiVision(file: File): Promise<ImageToTextResult> {
   if (!OPENAI_API_KEY.trim()) {
-    throw new Error('Thiếu VITE_OPENAI_API_KEY — hoặc chọn provider Puter.')
+    throw new Error('Thiếu VITE_OPENAI_API_KEY — hoặc đặt VITE_IMAGE_TO_TEXT_PROVIDER=gemini và VITE_GEMINI_API_KEY.')
   }
 
   const dataUrl = await fileToDataUrl(file)

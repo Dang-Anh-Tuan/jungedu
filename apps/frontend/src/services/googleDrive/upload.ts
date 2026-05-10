@@ -1,3 +1,4 @@
+import i18n from '../../i18n/i18n'
 import { googleDriveThumbnailUrl } from './thumbnailUrl'
 
 function isScopeInsufficientErrorBody(body: string): boolean {
@@ -106,8 +107,11 @@ export async function downloadGoogleDriveFileBlob(
     headers: { Authorization: `Bearer ${accessToken}` }
   })
   if (!res.ok) {
+    if (res.status === 404) {
+      throw new Error(i18n.t('errors.driveDownloadNotFound'))
+    }
     const t = await res.text()
-    throw new Error(`Drive download: ${res.status} ${t}`)
+    throw new Error(i18n.t('errors.driveDownloadFailed', { status: `${res.status} ${t.slice(0, 120)}` }))
   }
   return res.blob()
 }
