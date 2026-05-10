@@ -18,6 +18,7 @@ function mistakeTypeBadge(mistakeType: string) {
   const colorMap: Record<string, string> = {
     spelling: 'bg-red-100 text-red-700 border-red-200',
     grammar: 'bg-orange-100 text-orange-700 border-orange-200',
+    punctuation: 'bg-amber-100 text-amber-800 border-amber-200',
     repeat: 'bg-yellow-100 text-yellow-700 border-yellow-200',
     missing_idea: 'bg-blue-100 text-blue-700 border-blue-200',
     structure: 'bg-purple-100 text-purple-700 border-purple-200',
@@ -78,7 +79,8 @@ function AnnotatedEssay({
 
   for (const ann of annotations) {
     const { start, end, mistake } = ann
-    const isSpellingOrGrammar = mistake.type === 'spelling' || mistake.type === 'grammar'
+    const isSpellingOrGrammar =
+      mistake.type === 'spelling' || mistake.type === 'grammar' || mistake.type === 'punctuation'
     const isSuggestion = !isSpellingOrGrammar
 
     if (!showErrors && isSpellingOrGrammar) continue
@@ -363,6 +365,7 @@ export default function ReviewPage() {
                   >
                     <option value="spelling">{mistakeTypeLabelVi('spelling')}</option>
                     <option value="grammar">{mistakeTypeLabelVi('grammar')}</option>
+                    <option value="punctuation">{mistakeTypeLabelVi('punctuation')}</option>
                     <option value="repeat">{mistakeTypeLabelVi('repeat')}</option>
                     <option value="missing_idea">{mistakeTypeLabelVi('missing_idea')}</option>
                     <option value="structure">{mistakeTypeLabelVi('structure')}</option>

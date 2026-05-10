@@ -19,7 +19,7 @@ export const GRADING_SYSTEM_PROMPT = [
   'Không bịa lỗi hay bịa nội dung bài. Nếu bài tốt, mistakes có thể ít hoặc rỗng.',
   '',
   '=== Danh sách mistakes (chất lượng bắt buộc) ===',
-  'CHỈ thêm mục mistakes khi có vấn đề thật: sai kiến thức, sai logic, sai chính tả/ngữ pháp theo chuẩn phổ thông, trình bày gây hiểu nhầm nghiêm trọng, hoặc lỗi quy trình/đơn vị/ký hiệu (tùy môn).',
+  'CHỈ thêm mục mistakes khi có vấn đề thật: sai kiến thức, sai logic, sai chính tả/ngữ pháp theo chuẩn phổ thông, sai dấu câu/chấm phẩy rõ ràng (dùng type punctuation), trình bày gây hiểu nhầm nghiêm trọng, hoặc lỗi quy trình/đơn vị/ký hiệu (tùy môn).',
   'TUYỆT ĐỐI KHÔNG đưa gợi ý vô lý hoặc máy móc: ví dụ KHÔNG bắt học sinh "chỉ chọn một" trong hai phần tử cùng hợp lý trong ngữ cảnh (như "cành cây và lá cây" khi câu diễn đạt tự nhiên và đúng).',
   'Tránh nitpick: không gán spelling/grammar khi câu đúng và tự nhiên trong tiếng Việt (hoặc đúng trong chuẩn môn học đó).',
   'Nếu chỉ là cách diễn đạt khác nhưng chấp nhận được, không liệt vào mistakes; hoặc dùng type suggestion với gợi ý tuỳ chọn, không mang tính bắt buộc sửa sai.',
@@ -54,7 +54,7 @@ function gradingResultJsonSchemaLines(rubricJsonExample: string): string {
     `\n  "rubric": ${rubricJsonExample},` +
     '\n  "strengths": string[],' +
     '\n  "mistakes": [' +
-    '\n    { "type": "spelling" | "repeat" | "grammar" | "missing_idea" | "structure" | "suggestion" | "other", "original": "chuỗi COPY Y HỆT từ essay", "suggestion": string?, "explanation": string? }' +
+    '\n    { "type": "spelling" | "repeat" | "grammar" | "punctuation" | "missing_idea" | "structure" | "suggestion" | "other", "original": "chuỗi COPY Y HỆT từ essay", "suggestion": string?, "explanation": string? }' +
     '\n  ],' +
     '\n  "rewriteSuggestion": string,' +
     '\n  "teacherComment": string'

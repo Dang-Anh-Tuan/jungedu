@@ -148,6 +148,7 @@ function coerceMistakeType(raw: unknown): GradingMistake['type'] {
     'spelling',
     'repeat',
     'grammar',
+    'punctuation',
     'missing_idea',
     'structure',
     'suggestion',

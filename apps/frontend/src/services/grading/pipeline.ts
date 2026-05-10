@@ -1,8 +1,4 @@
-import i18n from 'i18next'
-import { z } from 'zod'
-
 import type { Exam, GradingResult, Student } from '../../types'
-import { pickRubricScoresForCriteria } from '../../lib/rubric'
 import type { RubricCriterion } from '../../lib/rubric'
 import {
   GRADING_GLOBAL_RULES,
@@ -14,7 +10,13 @@ import {
 } from '../../prompts/gradingPrompts'
 import { LIMITS, TIMING } from '../../config/constants'
 import { GEMINI_GRADING_MODEL } from '../config'
-import { GradingMistakeSchema, buildGradingResultSchema } from './schemas'
+import {
+  GeminiBatchGradingRootLooseSchema,
+  GeminiSingleGradingRootLooseSchema,
+  emptyGradingResult,
+  extractSubmissionIdFromBatchRow,
+  normalizeAiGradingRow
+} from './schemas'
 import { callGeminiJson } from './geminiJson'
 
 export type GradePipelineRequest = {
@@ -48,7 +50,6 @@ async function gradeWithRubric({
 }): Promise<GradingResult> {
   const rubricExplain = formatRubricCriteriaForPrompt(exam.rubric)
   const rubricJsonExample = rubricJsonShapeExample(exam.rubric)
-  const schema = buildGradingResultSchema(exam.rubric)
 
   const messages = [
     {
@@ -85,24 +86,14 @@ async function gradeWithRubric({
     }
   ]
 
-  const result = await callGeminiJson({
+  const raw = await callGeminiJson({
     messages,
-    schema,
+    schema: GeminiSingleGradingRootLooseSchema,
     model: GEMINI_GRADING_MODEL,
     temperature: 0
   })
 
-  const rubricPicked = pickRubricScoresForCriteria(result.rubric, exam.rubric)
-
-  const normalized: GradingResult = {
-    ...result,
-    rubric: rubricPicked,
-    rewriteSuggestion: result.rewriteSuggestion ?? '',
-    teacherComment: result.teacherComment ?? '',
-    mistakes: (result.mistakes ?? []).map((m) => GradingMistakeSchema.parse(m))
-  }
-
-  return normalized
+  return normalizeAiGradingRow(raw, exam.rubric)
 }
 
 export type GradeEssayBatchItem = {
@@ -110,11 +101,6 @@ export type GradeEssayBatchItem = {
   studentId: string
   essayText: string
   student: Pick<Student, 'name' | 'tags' | 'notes' | 'hocLuc'>
-}
-
-function buildBatchGradingEnvelopeSchema(criteria: RubricCriterion[]) {
-  const row = buildGradingResultSchema(criteria).extend({ submissionId: z.string() })
-  return z.object({ results: z.array(row) })
 }
 
 /** Một lần gọi API cho một đoạn danh sách bài (đã chunk). */
@@ -129,7 +115,6 @@ async function gradeEssaysBatchOneChunk({
 }): Promise<Map<string, GradingResult>> {
   const rubricExplain = formatRubricCriteriaForPrompt(exam.rubric)
   const rubricJsonExample = rubricJsonShapeExample(exam.rubric)
-  const schema = buildBatchGradingEnvelopeSchema(exam.rubric)
 
   const messages = [
     { role: 'system' as const, content: GRADING_SYSTEM_PROMPT },
@@ -167,34 +152,29 @@ async function gradeEssaysBatchOneChunk({
     }
   ]
 
-  const parsed = await callGeminiJson({
+  const parsed = await callGeminiJson<{ results: unknown[] }>({
     messages,
-    schema,
+    schema: GeminiBatchGradingRootLooseSchema,
     model: GEMINI_GRADING_MODEL,
     temperature: 0,
     maxOutputTokens: LIMITS.BATCH_GRADING_MAX_TOKENS,
     timeoutMs: TIMING.AI_BULK_TIMEOUT_MS
   })
 
-  const expected = new Set(items.map((i) => i.submissionId))
-  const got = new Set(parsed.results.map((r) => r.submissionId))
-  if (got.size !== expected.size || ![...expected].every((id) => got.has(id))) {
-    throw new Error(i18n.t('errors.geminiBatchGradeInvalid'))
-  }
-
+  const expectedIds = new Set(items.map((i) => i.submissionId))
   const out = new Map<string, GradingResult>()
   for (const row of parsed.results) {
-    const rubricPicked = pickRubricScoresForCriteria(row.rubric, exam.rubric)
-    const normalized: GradingResult = {
-      score: row.score,
-      rubric: rubricPicked,
-      rewriteSuggestion: row.rewriteSuggestion ?? '',
-      teacherComment: row.teacherComment ?? '',
-      strengths: row.strengths ?? [],
-      mistakes: (row.mistakes ?? []).map((m) => GradingMistakeSchema.parse(m))
-    }
-    out.set(row.submissionId, normalized)
+    const sid = extractSubmissionIdFromBatchRow(row)
+    if (!sid || !expectedIds.has(sid)) continue
+    out.set(sid, normalizeAiGradingRow(row, exam.rubric))
   }
+
+  for (const it of items) {
+    if (!out.has(it.submissionId)) {
+      out.set(it.submissionId, emptyGradingResult(exam.rubric))
+    }
+  }
+
   return out
 }
 

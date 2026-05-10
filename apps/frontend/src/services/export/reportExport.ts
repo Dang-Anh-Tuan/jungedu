@@ -51,8 +51,14 @@ function buildAnnotatedEssayParts(essay: string, mistakes: GradingMistake[]) {
     }
     parts.push({
       text: essay.slice(start, end),
-      color: matched.type === 'spelling' || matched.type === 'grammar' ? '#7F1D1D' : '#713F12',
-      background: matched.type === 'spelling' || matched.type === 'grammar' ? '#FECACA' : '#FDE68A'
+      color:
+        matched.type === 'spelling' || matched.type === 'grammar' || matched.type === 'punctuation'
+          ? '#7F1D1D'
+          : '#713F12',
+      background:
+        matched.type === 'spelling' || matched.type === 'grammar' || matched.type === 'punctuation'
+          ? '#FECACA'
+          : '#FDE68A'
     })
     if (matched.suggestion) {
       parts.push({
