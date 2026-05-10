@@ -9,11 +9,11 @@ function normalizeImageToTextProvider(raw: string | undefined): ImageToTextProvi
   return 'puter'
 }
 
-export const PUTER_GRADING_MODEL = import.meta.env.VITE_PUTER_GRADING_MODEL || 'gpt-4o-mini'
+export const PUTER_GRADING_MODEL = import.meta.env.VITE_PUTER_GRADING_MODEL || 'openai/gpt-5.5'
 
 export const IMAGE_TO_TEXT_PROVIDER = normalizeImageToTextProvider(import.meta.env.VITE_IMAGE_TO_TEXT_PROVIDER)
 
-export const PUTER_VISION_MODEL = import.meta.env.VITE_PUTER_VISION_MODEL || 'gpt-4o'
+export const PUTER_VISION_MODEL = import.meta.env.VITE_PUTER_VISION_MODEL || 'openai/gpt-5.5'
 
 export type SubmissionImageStorageMode = 'firebase' | 'local' | 'gdrive'
 
@@ -26,7 +26,7 @@ export function getSubmissionImageStorageMode(): SubmissionImageStorageMode {
 
 export const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || ''
 export const OPENAI_API_BASE = import.meta.env.VITE_OPENAI_API_BASE || 'https://api.openai.com/v1'
-export const OPENAI_VISION_MODEL = import.meta.env.VITE_OPENAI_VISION_MODEL || 'gpt-4o'
+export const OPENAI_VISION_MODEL = import.meta.env.VITE_OPENAI_VISION_MODEL || 'openai/gpt-5.5'
 
 export function describeImageToTextBackend(): string {
   switch (IMAGE_TO_TEXT_PROVIDER) {

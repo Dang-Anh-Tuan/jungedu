@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
-import { LIMITS, TIMING } from '../config/constants'
+import { TIMING } from '../config/constants'
+import { resolveMistakeSpans } from '../lib/essayMistakeSpans'
 import { mistakeTypeLabelVi } from '../lib/mistakeLabels'
 import {
   DEFAULT_RUBRIC_CRITERIA,
@@ -24,17 +25,6 @@ function mistakeTypeBadge(mistakeType: string) {
     other: 'bg-slate-100 text-slate-600 border-slate-200'
   }
   return colorMap[mistakeType] ?? 'bg-slate-100 text-slate-600 border-slate-200'
-}
-
-function escapeRegExp(string: string) {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function createFuzzyRegex(original: string) {
-  const words = original.trim().split(/[\s\.,?!;:"'()\[\]]+/).filter(Boolean)
-  if (words.length === 0) return null
-  const pattern = words.map(escapeRegExp).join('[\\s\\.,?!;:"\'()\\[\\]]+')
-  return new RegExp(pattern, 'gi')
 }
 
 function clampRubricValue(v: number): number {
@@ -74,59 +64,10 @@ function AnnotatedEssay({
   showErrors: boolean
   showSuggestions: boolean
 }) {
-  interface Annotation {
-    start: number
-    end: number
-    mistake: GradingMistake
-  }
-
-  const annotations: Annotation[] = useMemo(() => {
-    const found: Annotation[] = []
-    const usedRanges: [number, number][] = []
-
-    // Sort by length ASCENDING so smaller (more specific) mistakes are highlighted first and don't get swallowed by large structural overlaps
-    const sortedMistakes = [...mistakes].sort((a, b) => (a.original?.length || 0) - (b.original?.length || 0))
-
-    for (const m of sortedMistakes) {
-      if (!m.original || m.original.length < LIMITS.MISTAKE_ORIGINAL_MIN_LEN) continue
-      
-      let foundMatch = false
-      const regex = createFuzzyRegex(m.original)
-      
-      if (regex) {
-        const matches = [...text.matchAll(regex)]
-        for (const match of matches) {
-          const start = match.index!
-          const end = start + match[0].length
-          const overlaps = usedRanges.some(([s, e]) => start < e && end > s)
-          if (!overlaps) {
-            found.push({ start, end, mistake: m })
-            usedRanges.push([start, end])
-            foundMatch = true
-            break
-          }
-        }
-      }
-
-      if (!foundMatch) {
-        let cursor = 0
-        while (true) {
-          const start = text.indexOf(m.original, cursor)
-          if (start === -1) break
-          const end = start + m.original.length
-          const overlaps = usedRanges.some(([s, e]) => start < e && end > s)
-          if (!overlaps) {
-            found.push({ start, end, mistake: m })
-            usedRanges.push([start, end])
-            break
-          }
-          cursor = start + 1
-        }
-      }
-    }
-
-    return found.sort((a, b) => a.start - b.start)
-  }, [text, mistakes])
+  const annotations = useMemo(
+    () => resolveMistakeSpans(text, mistakes),
+    [text, mistakes]
+  )
 
   if (!showErrors && !showSuggestions) {
     return <p className="whitespace-pre-wrap text-sm text-slate-800 leading-relaxed">{text}</p>

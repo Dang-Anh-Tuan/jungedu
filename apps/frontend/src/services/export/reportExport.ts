@@ -6,6 +6,7 @@ import pdfFonts from 'pdfmake/build/vfs_fonts'
 
 import type { Content, TableCell } from 'pdfmake/interfaces'
 
+import { resolveMistakeSpans } from '../../lib/essayMistakeSpans'
 import type { Exam, Student, Submission, GradingMistake } from '../../types'
 
 type StudentResultRow = {
@@ -41,30 +42,15 @@ function buildAnnotatedEssayParts(essay: string, mistakes: GradingMistake[]) {
     parts.push(i18n.t('pdf.none'))
     return parts
   }
-  const sorted = [...mistakes]
-    .filter((m) => safeText(m.original).length > 0)
-    .sort((a, b) => b.original.length - a.original.length)
+  /** Cùng logic fuzzy + indexOf như màn Review — tránh PDF chỉ hiện 1 lỗi khi chuỗi không khớp tuyệt đối. */
+  const spans = resolveMistakeSpans(essay, mistakes)
   let cursor = 0
-  while (cursor < essay.length) {
-    let matched: GradingMistake | undefined
-    let start = -1
-    for (const m of sorted) {
-      const idx = essay.indexOf(m.original, cursor)
-      if (idx === -1) continue
-      if (start === -1 || idx < start) {
-        start = idx
-        matched = m
-      }
-    }
-    if (!matched || start === -1) {
-      parts.push(essay.slice(cursor))
-      break
-    }
+  for (const { start, end, mistake: matched } of spans) {
     if (start > cursor) {
       parts.push(essay.slice(cursor, start))
     }
     parts.push({
-      text: matched.original,
+      text: essay.slice(start, end),
       color: matched.type === 'spelling' || matched.type === 'grammar' ? '#7F1D1D' : '#713F12',
       background: matched.type === 'spelling' || matched.type === 'grammar' ? '#FECACA' : '#FDE68A'
     })
@@ -76,7 +62,10 @@ function buildAnnotatedEssayParts(essay: string, mistakes: GradingMistake[]) {
         background: '#DCFCE7'
       })
     }
-    cursor = start + matched.original.length
+    cursor = end
+  }
+  if (cursor < essay.length) {
+    parts.push(essay.slice(cursor))
   }
   return parts
 }
