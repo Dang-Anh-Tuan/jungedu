@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenerativeAI, type Part } from '@google/generative-ai'
 import i18n from 'i18next'
 import { z } from 'zod'
 
@@ -35,12 +35,16 @@ export async function callGeminiJson<T>({
   messages,
   schema,
   model,
-  temperature = 0
+  temperature = 0,
+  maxOutputTokens = LIMITS.GRADING_MAX_TOKENS,
+  timeoutMs = TIMING.AI_CHAT_TIMEOUT_MS
 }: {
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   schema: z.ZodType<T>
   model: string
   temperature?: number
+  maxOutputTokens?: number
+  timeoutMs?: number
 }): Promise<T> {
   const key = GEMINI_API_KEY.trim()
   if (!key) {
@@ -64,14 +68,78 @@ export async function callGeminiJson<T>({
     ...(systemInstruction ? { systemInstruction } : {}),
     generationConfig: {
       temperature,
-      maxOutputTokens: LIMITS.GRADING_MAX_TOKENS,
+      maxOutputTokens,
       responseMimeType: 'application/json'
     }
   })
 
   const result = await withTimeout(
     genModel.generateContent(userText),
-    TIMING.AI_CHAT_TIMEOUT_MS,
+    timeoutMs,
+    `Gemini (${model})`
+  )
+
+  const raw = result.response.text()?.trim()
+  if (!raw) {
+    throw new Error(i18n.t('errors.geminiEmptyResponse'))
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    parsed = JSON.parse(extractFirstJsonObject(raw))
+  }
+
+  return schema.parse(parsed)
+}
+
+/**
+ * Gemini multimodal + JSON (một request): `parts` là luồng text / ảnh xen kẽ.
+ */
+export async function callGeminiJsonWithParts<T>({
+  systemInstruction,
+  parts,
+  schema,
+  model,
+  temperature = 0,
+  maxOutputTokens = LIMITS.GRADING_MAX_TOKENS,
+  timeoutMs = TIMING.AI_CHAT_TIMEOUT_MS,
+  jsonFollowup = JSON_ONLY_FOLLOWUP
+}: {
+  systemInstruction?: string
+  parts: Part[]
+  schema: z.ZodType<T>
+  model: string
+  temperature?: number
+  maxOutputTokens?: number
+  timeoutMs?: number
+  jsonFollowup?: string
+}): Promise<T> {
+  const key = GEMINI_API_KEY.trim()
+  if (!key) {
+    throw new Error(i18n.t('errors.geminiMissingKey'))
+  }
+
+  const genAI = new GoogleGenerativeAI(key)
+  const genModel = genAI.getGenerativeModel({
+    model,
+    ...(systemInstruction ? { systemInstruction } : {}),
+    generationConfig: {
+      temperature,
+      maxOutputTokens,
+      responseMimeType: 'application/json'
+    }
+  })
+
+  const tail: Part[] =
+    jsonFollowup.trim().length > 0
+      ? [{ text: `\n\n${jsonFollowup.trim()}` }]
+      : []
+
+  const result = await withTimeout(
+    genModel.generateContent([...parts, ...tail]),
+    timeoutMs,
     `Gemini (${model})`
   )
 

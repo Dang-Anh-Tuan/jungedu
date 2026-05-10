@@ -10,8 +10,10 @@ import type { Submission, SubmissionImageFile } from '../types'
 import { fileToDataUrl } from '../lib/fileDataUrl'
 import { sortFilesNatural } from '../lib/bulkFiles'
 import { runImageToText } from '../services/imageToText'
+import { runGeminiVisionBatch } from '../services/imageToText/geminiVisionBatch'
+import { IMAGE_TO_TEXT_PROVIDER } from '../services/config'
 import { getTeacherGradingExperienceCached } from '../services/appSettings/teacherGradingExperiencePref'
-import { runAiGrade } from '../application/gradingService'
+import { runAiGrade, runAiGradeBatch } from '../application/gradingService'
 import { submissionAiMatchPercent } from '../lib/textSimilarity'
 import { getSubmissionImageStorageMode } from '../services/config'
 import { resolveSubmissionImageWorkUrl } from '../services/storage/submissionImagePersistence'
@@ -416,7 +418,58 @@ export default function SubmissionImportPage() {
       toast.info(t('submissionImport.bulkConvertNone'))
       return
     }
-    
+
+    if (IMAGE_TO_TEXT_PROVIDER === 'gemini') {
+      setProcessingState({ type: 'convert', current: 0, total: 1, activeStudentId: null })
+      const cleanups: string[] = []
+      try {
+        const segments: {
+          submissionId: string
+          studentId: string
+          imageName: string
+          file: File
+        }[] = []
+        for (const st of targets) {
+          const sub = submissionForStudent(useAppStore.getState().submissions, examId!, st.id)
+          if (!sub) continue
+          for (const img of sub.imageFiles) {
+            const prepared = await toOcrInputFile(img)
+            if (prepared.cleanupObjectUrl) cleanups.push(prepared.cleanupObjectUrl)
+            segments.push({
+              submissionId: sub.id,
+              studentId: st.id,
+              imageName: img.name,
+              file: prepared.file
+            })
+          }
+        }
+        if (segments.length === 0) {
+          toast.info(t('submissionImport.bulkConvertNone'))
+          setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
+          return
+        }
+        const bySubmission = await runGeminiVisionBatch(segments)
+        await Promise.all(
+          targets.map(async (st) => {
+            const sub = submissionForStudent(useAppStore.getState().submissions, examId!, st.id)
+            if (!sub) return
+            const pages = bySubmission.get(sub.id)
+            if (pages?.length) {
+              await useAppStore.getState().replaceSubmissionOcrPages(sub.id, pages)
+            }
+          })
+        )
+        setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
+        toast.success(t('submissionImport.bulkConvertOk', { success: targets.length, total: targets.length }))
+      } catch (e) {
+        setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
+        toast.error(e instanceof Error ? e.message : t('submissionImport.convertFail'))
+      } finally {
+        cleanups.forEach((u) => URL.revokeObjectURL(u))
+      }
+      return
+    }
+
     setProcessingState({ type: 'convert', current: 0, total: targets.length, activeStudentId: null })
     let success = 0
     for (let i = 0; i < targets.length; i++) {
@@ -439,15 +492,67 @@ export default function SubmissionImportPage() {
       return
     }
 
-    setProcessingState({ type: 'grade', current: 0, total: targets.length, activeStudentId: null })
-    let success = 0
-    for (let i = 0; i < targets.length; i++) {
-      setProcessingState(prev => ({ ...prev, current: i, activeStudentId: targets[i].id }))
-      const ok = await executeGrade(targets[i].id, true)
-      if (ok) success++
+    if (!exam) {
+      setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
+      return
     }
-    setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
-    toast.success(t('submissionImport.bulkGradeOk', { success, total: targets.length }))
+
+    setProcessingState({ type: 'grade', current: 0, total: 1, activeStudentId: null })
+    try {
+      const items = targets
+        .map((st) => {
+          const sub = submissionForStudent(useAppStore.getState().submissions, examId!, st.id)
+          const student = useAppStore.getState().students.find((s) => s.id === st.id)
+          if (!sub || !student) return null
+          const essayText = sub.ocrPages.map((p) => p.correctedText).join('\n').trim()
+          if (!essayText) return null
+          return {
+            submissionId: sub.id,
+            studentId: st.id,
+            essayText,
+            student: {
+              name: student.name,
+              tags: student.tags,
+              notes: student.notes,
+              hocLuc: student.hocLuc
+            }
+          }
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null)
+
+      if (items.length === 0) {
+        setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
+        toast.info(t('submissionImport.bulkGradeNone'))
+        return
+      }
+
+      const results = await runAiGradeBatch({
+        exam: {
+          title: exam.title,
+          subject: exam.subject,
+          grade: exam.grade,
+          requirements: exam.requirements,
+          rubric: exam.rubric,
+          teacherStyle: exam.teacherStyle
+        },
+        items,
+        teacherGradingExperience: getTeacherGradingExperienceCached()
+      })
+
+      let success = 0
+      for (const it of items) {
+        const graded = results.get(it.submissionId)
+        if (graded) {
+          await useAppStore.getState().setGradingResult(it.submissionId, graded)
+          success++
+        }
+      }
+      setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
+      toast.success(t('submissionImport.bulkGradeOk', { success, total: items.length }))
+    } catch (e) {
+      setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
+      toast.error(e instanceof Error ? e.message : t('submissionImport.gradeUnknownError'))
+    }
   }
 
   async function confirmWarnModal() {

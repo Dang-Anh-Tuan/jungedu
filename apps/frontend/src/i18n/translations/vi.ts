@@ -428,6 +428,8 @@ const vi = {
     geminiMissingKey: 'Thiếu VITE_GEMINI_API_KEY trong .env (Google AI Studio / Gemini API).',
     geminiEmptyResponse: 'Gemini không trả về JSON hợp lệ. Kiểm tra model, quota và API key.',
     geminiVisionEmpty: 'Gemini không trả về văn bản OCR. Kiểm tra model và ảnh đầu vào.',
+    geminiBatchVisionInvalid: 'OCR hàng loạt: JSON không đủ hoặc sai index ảnh. Thử lại hoặc chạy từng học sinh.',
+    geminiBatchGradeInvalid: 'Chấm hàng loạt: JSON thiếu/thừa bài hoặc sai submissionId. Thử lại.',
     firestorePath: 'Firestore [{{path}}]: {{message}}',
     firestoreSettings: 'Firestore [settings/app]: {{message}}',
     imageProvider: 'VITE_IMAGE_TO_TEXT_PROVIDER không hợp lệ: {{provider}}',

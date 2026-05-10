@@ -48,10 +48,8 @@ export function rubricJsonShapeExample(rubric: Exam['rubric']): string {
 
 const OUTPUT_JSON_INSTRUCTION = '\n\nOUTPUT JSON (bắt buộc, KHÔNG thêm key):'
 
-export function buildGradingUserMessageSuffix(rubricJsonExample: string): string {
+function gradingResultJsonSchemaLines(rubricJsonExample: string): string {
   return (
-    OUTPUT_JSON_INSTRUCTION +
-    '\n{' +
     '\n  "score": number,' +
     `\n  "rubric": ${rubricJsonExample},` +
     '\n  "strengths": string[],' +
@@ -59,8 +57,28 @@ export function buildGradingUserMessageSuffix(rubricJsonExample: string): string
     '\n    { "type": "spelling" | "repeat" | "grammar" | "missing_idea" | "structure" | "suggestion" | "other", "original": "chuỗi COPY Y HỆT từ essay", "suggestion": string?, "explanation": string? }' +
     '\n  ],' +
     '\n  "rewriteSuggestion": string,' +
-    '\n  "teacherComment": string' +
-    '\n}'
+    '\n  "teacherComment": string'
+  )
+}
+
+export function buildGradingUserMessageSuffix(rubricJsonExample: string): string {
+  return OUTPUT_JSON_INSTRUCTION + '\n{' + gradingResultJsonSchemaLines(rubricJsonExample) + '\n}'
+}
+
+/** Hậu tố JSON khi chấm nhiều bài trong một response (`results[]`, mỗi phần tử có `submissionId`). */
+export function buildBatchGradingUserMessageSuffix(rubricJsonExample: string): string {
+  const inner = gradingResultJsonSchemaLines(rubricJsonExample)
+  return (
+    '\n\nOUTPUT JSON (bắt buộc):' +
+    '\n{' +
+    '\n  "results": [' +
+    '\n    {' +
+    '\n      "submissionId": string,' +
+    inner +
+    '\n    }' +
+    '\n  ]' +
+    '\n}' +
+    '\nMỗi submissionId trong submissions (input) phải xuất hiện đúng một lần trong results; không thừa, không thiếu. Chấm từng bài độc lập với cùng examContext và rubric.'
   )
 }
 
