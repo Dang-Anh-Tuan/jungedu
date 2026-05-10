@@ -1,5 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
+import { LIMITS, TIMING } from '../config/constants'
+import { mistakeTypeLabelVi } from '../lib/mistakeLabels'
 import {
   DEFAULT_RUBRIC_CRITERIA,
   gradingRubricScoresEqual,
@@ -10,20 +13,7 @@ import {
 import { useAppStore } from '../state/appStore'
 import type { GradingMistake, GradingResult } from '../types'
 
-function mistakeTypeVi(t: string) {
-  const map: Record<string, string> = {
-    spelling: 'Chính tả',
-    repeat: 'Lặp ý',
-    grammar: 'Ngữ pháp',
-    missing_idea: 'Thiếu ý',
-    structure: 'Bố cục',
-    suggestion: 'Gợi ý',
-    other: 'Khác'
-  }
-  return map[t] ?? t.replaceAll('_', ' ')
-}
-
-function mistakeTypeBadge(t: string) {
+function mistakeTypeBadge(mistakeType: string) {
   const colorMap: Record<string, string> = {
     spelling: 'bg-red-100 text-red-700 border-red-200',
     grammar: 'bg-orange-100 text-orange-700 border-orange-200',
@@ -33,7 +23,7 @@ function mistakeTypeBadge(t: string) {
     suggestion: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     other: 'bg-slate-100 text-slate-600 border-slate-200'
   }
-  return colorMap[t] ?? 'bg-slate-100 text-slate-600 border-slate-200'
+  return colorMap[mistakeType] ?? 'bg-slate-100 text-slate-600 border-slate-200'
 }
 
 function escapeRegExp(string: string) {
@@ -98,7 +88,7 @@ function AnnotatedEssay({
     const sortedMistakes = [...mistakes].sort((a, b) => (a.original?.length || 0) - (b.original?.length || 0))
 
     for (const m of sortedMistakes) {
-      if (!m.original || m.original.length < 2) continue
+      if (!m.original || m.original.length < LIMITS.MISTAKE_ORIGINAL_MIN_LEN) continue
       
       let foundMatch = false
       const regex = createFuzzyRegex(m.original)
@@ -200,6 +190,7 @@ function AnnotatedEssay({
 }
 
 export default function ReviewPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { submissionId } = useParams()
 
@@ -286,14 +277,14 @@ export default function ReviewPage() {
       if (shouldSave) {
         setGradingResult(submission.id, next)
       }
-    }, 500)
+    }, TIMING.REVIEW_AUTOSAVE_DEBOUNCE_MS)
     return () => clearTimeout(saveTimeout.current)
   }, [rubricDraft, score, teacherComment, strengthsText, initial, submission, setGradingResult, criteria])
 
   if (!submission) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8">
-        <div className="text-lg font-semibold text-slate-900">Không tìm thấy bài làm</div>
+        <div className="text-lg font-semibold text-slate-900">{t('review.notFoundSubmission')}</div>
       </div>
     )
   }
@@ -301,14 +292,14 @@ export default function ReviewPage() {
   if (!initial) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 space-y-4">
-        <div className="text-lg font-semibold text-slate-900">Chưa có kết quả AI</div>
-        <p className="text-sm text-slate-600">Quay lại bước chấm và chạy AI trước.</p>
+        <div className="text-lg font-semibold text-slate-900">{t('review.noAi')}</div>
+        <p className="text-sm text-slate-600">{t('review.noAiHint')}</p>
         <button
           type="button"
           className="rounded-xl bg-emerald-600 text-white px-5 py-2 text-sm font-medium"
           onClick={() => navigate(`/submissions/${submission.id}/grading`)}
         >
-          Đến màn chấm AI
+          {t('review.goGrading')}
         </button>
       </div>
     )
@@ -343,9 +334,9 @@ export default function ReviewPage() {
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Duyệt kết quả</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('review.title')}</h1>
           <p className="text-sm text-slate-600 mt-1">
-            Học sinh: <strong>{submission.studentName}</strong>
+            {t('review.subtitlePrefix')} <strong>{submission.studentName}</strong>
           </p>
         </div>
         <button
@@ -353,13 +344,13 @@ export default function ReviewPage() {
           className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           onClick={() => navigate(-1)}
         >
-          ← Trở lại
+          {t('review.back')}
         </button>
       </div>
 
       {/* Toggle controls */}
       <div className="flex flex-wrap gap-3 items-center bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5">
-        <span className="text-xs font-medium text-slate-600 mr-1">Hiển thị:</span>
+        <span className="text-xs font-medium text-slate-600 mr-1">{t('review.show')}</span>
         <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-700">
           <input
             type="checkbox"
@@ -368,7 +359,7 @@ export default function ReviewPage() {
             className="rounded border-slate-300 accent-red-500"
           />
           <span className="flex items-center gap-1">
-            <mark className="bg-red-200 px-1 rounded text-red-900 not-italic font-medium">Lỗi chính tả / ngữ pháp</mark>
+            <mark className="bg-red-200 px-1 rounded text-red-900 not-italic font-medium">{t('review.errGrammar')}</mark>
           </span>
         </label>
         <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-slate-700">
@@ -379,7 +370,9 @@ export default function ReviewPage() {
             className="rounded border-slate-300 accent-yellow-500"
           />
           <span className="flex items-center gap-1">
-            <mark className="bg-yellow-300 px-1 rounded text-yellow-900 not-italic font-medium">Gợi ý cải thiện</mark>
+            <mark className="bg-yellow-300 px-1 rounded text-yellow-900 not-italic font-medium">
+              {t('review.errSuggestion')}
+            </mark>
           </span>
         </label>
       </div>
@@ -390,8 +383,8 @@ export default function ReviewPage() {
         {/* LEFT: Annotated essay */}
         <div className="lg:col-span-3 h-[60vh] lg:h-full flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-            <span className="font-semibold text-slate-800 text-sm">Bài làm</span>
-            <span className="text-xs text-slate-500">{combinedCorrectedText.length} ký tự</span>
+            <span className="font-semibold text-slate-800 text-sm">{t('review.essay')}</span>
+            <span className="text-xs text-slate-500">{t('review.chars', { n: combinedCorrectedText.length })}</span>
           </div>
           <div className="p-5 flex-1 overflow-y-auto">
             <AnnotatedEssay
@@ -409,13 +402,13 @@ export default function ReviewPage() {
           {/* Mistake list — Flexible height */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col h-[50vh] lg:h-auto lg:flex-1 lg:min-h-0 overflow-hidden">
             <div className="px-4 py-3 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
-              <span className="font-semibold text-slate-800 text-sm">Danh sách lỗi ({mistakes.length})</span>
+              <span className="font-semibold text-slate-800 text-sm">{t('review.mistakes', { n: mistakes.length })}</span>
               <button
                 type="button"
                 className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
                 onClick={() => setIsAddingMistake(!isAddingMistake)}
               >
-                + Thêm lỗi
+                {t('review.addMistake')}
               </button>
             </div>
             
@@ -427,17 +420,17 @@ export default function ReviewPage() {
                     value={newMistakeType}
                     onChange={(e) => setNewMistakeType(e.target.value as any)}
                   >
-                    <option value="spelling">Chính tả</option>
-                    <option value="grammar">Ngữ pháp</option>
-                    <option value="repeat">Lặp ý</option>
-                    <option value="missing_idea">Thiếu ý</option>
-                    <option value="structure">Bố cục</option>
-                    <option value="suggestion">Gợi ý</option>
-                    <option value="other">Khác</option>
+                    <option value="spelling">{mistakeTypeLabelVi('spelling')}</option>
+                    <option value="grammar">{mistakeTypeLabelVi('grammar')}</option>
+                    <option value="repeat">{mistakeTypeLabelVi('repeat')}</option>
+                    <option value="missing_idea">{mistakeTypeLabelVi('missing_idea')}</option>
+                    <option value="structure">{mistakeTypeLabelVi('structure')}</option>
+                    <option value="suggestion">{mistakeTypeLabelVi('suggestion')}</option>
+                    <option value="other">{mistakeTypeLabelVi('other')}</option>
                   </select>
                   <input
                     className="text-xs border border-slate-200 rounded px-2 py-1 flex-1 min-w-0"
-                    placeholder="Câu/Từ gốc..."
+                    placeholder={t('review.mistakePlaceholder')}
                     value={newMistakeOriginal}
                     onChange={(e) => setNewMistakeOriginal(e.target.value)}
                   />
@@ -445,7 +438,7 @@ export default function ReviewPage() {
                 <div className="flex gap-2 items-center">
                   <input
                     className="text-xs border border-slate-200 rounded px-2 py-1 flex-1 min-w-0"
-                    placeholder="Sửa thành (không bắt buộc)..."
+                    placeholder={t('review.fixPlaceholder')}
                     value={newMistakeSuggestion}
                     onChange={(e) => setNewMistakeSuggestion(e.target.value)}
                   />
@@ -455,7 +448,7 @@ export default function ReviewPage() {
                     disabled={!newMistakeOriginal.trim()}
                     className="text-xs bg-emerald-600 text-white px-3 py-1 rounded font-medium disabled:opacity-50"
                   >
-                    Lưu
+                    {t('review.saveMistake')}
                   </button>
                 </div>
               </div>
@@ -463,7 +456,7 @@ export default function ReviewPage() {
 
             <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
               {mistakes.length === 0 ? (
-                <div className="px-4 py-6 text-xs text-slate-400 text-center">Không có lỗi nào 🎉</div>
+                <div className="px-4 py-6 text-xs text-slate-400 text-center">{t('review.noMistakes')}</div>
               ) : (
                 mistakes.map((m, i) => (
                   <div
@@ -473,7 +466,7 @@ export default function ReviewPage() {
                     <div className="flex-1 cursor-pointer" onClick={() => setSelectedMistakeIdx(selectedMistakeIdx === i ? null : i)}>
                       <div className="flex items-start gap-2">
                         <span className={`flex-shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium ${mistakeTypeBadge(m.type)}`}>
-                          {mistakeTypeVi(m.type)}
+                          {mistakeTypeLabelVi(m.type)}
                         </span>
                         <span className="text-slate-700 flex-1 pt-0.5 leading-relaxed">
                           <span className="text-red-600 font-medium">{m.original}</span>
@@ -488,7 +481,7 @@ export default function ReviewPage() {
                       type="button"
                       onClick={() => handleDeleteMistake(i)}
                       className="ml-2 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 px-1"
-                      title="Xóa lỗi này"
+                      title={t('review.deleteMistake')}
                     >
                       ✕
                     </button>
@@ -501,7 +494,7 @@ export default function ReviewPage() {
           {/* Overview & Comment — Fixed at bottom */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm flex-shrink-0 flex flex-col">
             <div className="px-4 py-2 border-b border-slate-100 bg-slate-50">
-              <span className="font-semibold text-slate-800 text-sm">Tổng quan & Điểm</span>
+              <span className="font-semibold text-slate-800 text-sm">{t('review.overview')}</span>
             </div>
             
             <div className="p-4 flex flex-col gap-4">
@@ -539,14 +532,16 @@ export default function ReviewPage() {
                 </div>
 
                 <div className="flex-1 flex flex-col min-h-0">
-                  <div className="text-xs font-semibold text-emerald-700 mb-1 flex items-center gap-1 flex-shrink-0">✨ Điểm mạnh</div>
+                  <div className="text-xs font-semibold text-emerald-700 mb-1 flex items-center gap-1 flex-shrink-0">
+                    {t('review.strengths')}
+                  </div>
                   <textarea
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs resize-y min-h-[84px]"
                     value={strengthsText}
                     onChange={(e) => setStrengthsText(e.target.value)}
-                    placeholder="Mỗi dòng 1 ý ngắn, đúng trọng tâm"
+                    placeholder={t('review.strengthsPh')}
                   />
-                  <div className="text-[11px] text-slate-500 mt-1">Mỗi dòng sẽ là một điểm mạnh.</div>
+                  <div className="text-[11px] text-slate-500 mt-1">{t('review.strengthsHint')}</div>
                   </div>
               </div>
 
@@ -554,8 +549,8 @@ export default function ReviewPage() {
               <div className="flex flex-col">
                 <label className="flex-1 flex flex-col">
                   <span className="text-slate-600 text-sm font-medium mb-1.5 flex justify-between items-center">
-                    Nhận xét giáo viên
-                    <span className="text-xs text-emerald-600 font-normal">Tự động lưu</span>
+                    {t('review.teacherComment')}
+                    <span className="text-xs text-emerald-600 font-normal">{t('review.autosave')}</span>
                   </span>
                   <textarea
                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm resize-y min-h-[80px]"
@@ -574,7 +569,7 @@ export default function ReviewPage() {
         onClick={() => navigate(-1)}
         className="fixed bottom-5 right-5 z-30 rounded-full bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-emerald-700"
       >
-        ← Trở lại
+        {t('review.back')}
       </button>
     </div>
   )

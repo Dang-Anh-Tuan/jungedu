@@ -1,4 +1,6 @@
 import ExcelJS from 'exceljs'
+import i18n from '../../i18n/i18n'
+import { mistakeTypeLabelVi } from '../../lib/mistakeLabels'
 import pdfMake from 'pdfmake/build/pdfmake'
 import pdfFonts from 'pdfmake/build/vfs_fonts'
 
@@ -31,25 +33,12 @@ function normalizeScore(score: number | undefined): number {
   return Math.max(0, Math.min(10, Math.round(score * 10) / 10))
 }
 
-function mistakeTypeVi(t: GradingMistake['type']): string {
-  const map: Record<GradingMistake['type'], string> = {
-    spelling: 'Chính tả',
-    repeat: 'Lặp ý',
-    grammar: 'Ngữ pháp',
-    missing_idea: 'Thiếu ý',
-    structure: 'Bố cục',
-    suggestion: 'Gợi ý',
-    other: 'Khác'
-  }
-  return map[t]
-}
-
 function buildAnnotatedEssayParts(essay: string, mistakes: GradingMistake[]) {
   const parts: Array<
     string | { text: string; color?: string; background?: string; italics?: boolean }
   > = []
   if (!essay.trim()) {
-    parts.push('(Không có)')
+    parts.push(i18n.t('pdf.none'))
     return parts
   }
   const sorted = [...mistakes]
@@ -117,13 +106,13 @@ export async function exportSelectedResultsToExcel(
   examTitle: string
 ): Promise<void> {
   const workbook = new ExcelJS.Workbook()
-  const sheet = workbook.addWorksheet('Bảng điểm')
+  const sheet = workbook.addWorksheet(i18n.t('pdf.sheetName'))
   sheet.columns = [
-    { header: 'STT', key: 'stt', width: 8 },
-    { header: 'Họ và tên', key: 'studentName', width: 28 },
-    { header: 'Mã học sinh', key: 'studentCode', width: 16 },
-    { header: 'Điểm', key: 'score', width: 10 },
-    { header: 'Nhận xét', key: 'comment', width: 60 }
+    { header: i18n.t('pdf.colStt'), key: 'stt', width: 8 },
+    { header: i18n.t('pdf.colName'), key: 'studentName', width: 28 },
+    { header: i18n.t('pdf.colCode'), key: 'studentCode', width: 16 },
+    { header: i18n.t('pdf.colScore'), key: 'score', width: 10 },
+    { header: i18n.t('pdf.colComment'), key: 'comment', width: 60 }
   ]
 
   const headerRow = sheet.getRow(1)
@@ -187,11 +176,11 @@ export async function exportSelectedResultsToExcel(
 export function exportSelectedResultsSummaryPdf(rows: StudentResultRow[], examTitle: string): void {
   const body: TableCell[][] = [
     [
-      { text: 'STT', style: 'tableHeader' },
-      { text: 'Họ và tên', style: 'tableHeader' },
-      { text: 'Mã HS', style: 'tableHeader' },
-      { text: 'Điểm', style: 'tableHeader' },
-      { text: 'Nhận xét', style: 'tableHeader' }
+      { text: i18n.t('pdf.colStt'), style: 'tableHeader' },
+      { text: i18n.t('pdf.colName'), style: 'tableHeader' },
+      { text: i18n.t('pdf.sheetCode'), style: 'tableHeader' },
+      { text: i18n.t('pdf.colScore'), style: 'tableHeader' },
+      { text: i18n.t('pdf.colComment'), style: 'tableHeader' }
     ],
     ...rows.map((r, idx) => [
       { text: String(idx + 1), style: 'tableCellCenter' },
@@ -202,12 +191,16 @@ export function exportSelectedResultsSummaryPdf(rows: StudentResultRow[], examTi
     ])
   ]
 
+  const title = i18n.t('pdf.summaryTitle', {
+    title: safeText(examTitle) || i18n.t('pdf.summaryTitleFallback')
+  })
+
   pdfWithFonts
     .createPdf({
       pageSize: 'A4',
       pageMargins: [32, 36, 32, 36],
       content: [
-        { text: `Bảng điểm - ${safeText(examTitle) || 'Bài kiểm tra'}`, style: 'title' },
+        { text: title, style: 'title' },
         {
           table: {
             headerRows: 1,
@@ -237,7 +230,7 @@ export function exportSelectedResultsSummaryPdf(rows: StudentResultRow[], examTi
 
 function formatMistake(m: GradingMistake): string {
   const suffix = m.suggestion ? ` -> ${m.suggestion}` : ''
-  return `${mistakeTypeVi(m.type)}: ${m.original}${suffix}`
+  return `${mistakeTypeLabelVi(m.type)}: ${m.original}${suffix}`
 }
 
 export function exportSelectedDetailedReviewPdf({
@@ -251,6 +244,7 @@ export function exportSelectedDetailedReviewPdf({
 }): void {
   const detailedContents: Content[] = []
   let count = 0
+  const dash = i18n.t('pdf.dash')
 
   for (const student of students) {
     const sub = submissions.find((s) => s.studentId === student.id)
@@ -258,19 +252,30 @@ export function exportSelectedDetailedReviewPdf({
     count += 1
     const grading = sub.gradingResult
     const essay = sub.ocrPages.map((p) => p.correctedText).join('\n').trim()
-    const strengths = grading.strengths.length > 0 ? grading.strengths : ['(Không có)']
-    const mistakes = grading.mistakes.length > 0 ? grading.mistakes.map(formatMistake) : ['(Không có)']
+    const none = i18n.t('pdf.none')
+    const strengths = grading.strengths.length > 0 ? grading.strengths : [none]
+    const mistakes = grading.mistakes.length > 0 ? grading.mistakes.map(formatMistake) : [none]
     const annotatedEssayParts = buildAnnotatedEssayParts(essay, grading.mistakes)
     const rubricTableBody: TableCell[][] = [
-      [{ text: 'Mục', style: 'smallTableHeader' }, { text: 'Điểm', style: 'smallTableHeader' }],
-      ...exam.rubric.map((c) => [c.label, String(grading.rubric[c.id] ?? '—')])
+      [
+        { text: i18n.t('pdf.rubricCol'), style: 'smallTableHeader' },
+        { text: i18n.t('pdf.rubricScore'), style: 'smallTableHeader' }
+      ],
+      ...exam.rubric.map((c) => [c.label, String(grading.rubric[c.id] ?? dash)])
     ]
 
     detailedContents.push(
-      { text: `${exam.title} - Phiếu chấm`, style: 'title' },
-      { text: `Học sinh: ${student.name}`, style: 'meta' },
-      { text: `Mã HS: ${safeText(student.studentCode) || '-'}`, style: 'meta' },
-      { text: `Điểm: ${normalizeScore(grading.score).toFixed(1)}/10`, style: 'meta', margin: [0, 0, 0, 8] },
+      { text: i18n.t('pdf.sheetTitle', { title: exam.title }), style: 'title' },
+      { text: i18n.t('pdf.studentLine', { name: student.name }), style: 'meta' },
+      {
+        text: i18n.t('pdf.codeLine', { code: safeText(student.studentCode) || '-' }),
+        style: 'meta'
+      },
+      {
+        text: i18n.t('pdf.scoreLine', { score: normalizeScore(grading.score).toFixed(1) }),
+        style: 'meta',
+        margin: [0, 0, 0, 8]
+      },
       {
         table: {
           headerRows: 1,
@@ -280,24 +285,24 @@ export function exportSelectedDetailedReviewPdf({
         layout: 'lightHorizontalLines',
         margin: [0, 0, 0, 10]
       },
-      { text: 'Điểm mạnh', style: 'sectionTitle' },
+      { text: i18n.t('pdf.strengths'), style: 'sectionTitle' },
       { ul: strengths, margin: [0, 0, 0, 8] },
-      { text: 'Nhận xét giáo viên', style: 'sectionTitle' },
-      { text: safeText(grading.teacherComment) || '(Không có)', margin: [0, 0, 0, 8] },
-      { text: 'Bài làm đối chiếu', style: 'sectionTitle' },
+      { text: i18n.t('pdf.teacherComment'), style: 'sectionTitle' },
+      { text: safeText(grading.teacherComment) || none, margin: [0, 0, 0, 8] },
+      { text: i18n.t('pdf.essayCompare'), style: 'sectionTitle' },
       {
         text: annotatedEssayParts,
         margin: [0, 0, 0, 8],
         lineHeight: 1.3
       },
-      { text: 'Lỗi và gợi ý', style: 'sectionTitle' },
+      { text: i18n.t('pdf.mistakes'), style: 'sectionTitle' },
       { ul: mistakes }
     )
     detailedContents.push({ text: '', pageBreak: 'after' })
   }
 
   if (count === 0) {
-    detailedContents.push({ text: 'Không có học sinh nào có kết quả chấm để xuất.' })
+    detailedContents.push({ text: i18n.t('pdf.emptyExport') })
   } else {
     detailedContents.pop()
   }

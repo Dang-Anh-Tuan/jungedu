@@ -1,20 +1,23 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { signOut } from 'firebase/auth'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { TIMING } from '../config/constants'
 import { auth } from '../lib/firebase'
 import { useAuthStore } from '../state/authStore'
 
-const nav = [
-  { to: '/', label: 'Trang chủ' },
-  { to: '/classes', label: 'Lớp' },
-  { to: '/exams', label: 'Bài kiểm tra' },
-  { to: '/profile', label: 'Cài đặt' }
-]
-
 export default function AppLayout() {
+  const { t } = useTranslation()
   const location = useLocation()
   const user = useAuthStore((s) => s.user)
+
+  const nav = [
+    { to: '/', labelKey: 'nav.home' as const },
+    { to: '/classes', labelKey: 'nav.classes' as const },
+    { to: '/exams', labelKey: 'nav.exams' as const },
+    { to: '/profile', labelKey: 'nav.settings' as const }
+  ]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 text-slate-900">
@@ -24,7 +27,7 @@ export default function AppLayout() {
             <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white text-sm font-bold shadow-sm">
               JE
             </span>
-            JungEdu Assistant
+            {t('app.name')}
           </Link>
           <nav className="flex flex-wrap gap-1">
             {nav.map((item) => {
@@ -37,7 +40,7 @@ export default function AppLayout() {
                     active ? 'bg-emerald-100 text-emerald-900 font-medium' : 'text-slate-600 hover:bg-slate-100'
                   }`}
                 >
-                  {item.label}
+                  {t(item.labelKey)}
                 </Link>
               )
             })}
@@ -49,7 +52,7 @@ export default function AppLayout() {
               onClick={() => void signOut(auth)}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-700 hover:bg-slate-50"
             >
-              Đăng xuất
+              {t('nav.logout')}
             </button>
           </div>
         </div>
@@ -61,7 +64,7 @@ export default function AppLayout() {
         position="bottom-right"
         richColors
         closeButton
-        duration={4200}
+        duration={TIMING.TOAST_DURATION_MS}
         toastOptions={{
           classNames: {
             toast:

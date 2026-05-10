@@ -2,14 +2,16 @@ import React, { useMemo, useRef, useState, useEffect } from 'react'
 import ReactCrop, { type Crop } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import i18n from '../i18n/i18n'
 import { useAppStore } from '../state/appStore'
 import type { Submission, SubmissionImageFile } from '../types'
 import { fileToDataUrl } from '../lib/fileDataUrl'
 import { sortFilesNatural } from '../lib/bulkFiles'
 import { runImageToText } from '../services/imageToText'
 import { getTeacherGradingExperienceCached } from '../services/appSettings/teacherGradingExperiencePref'
-import { runAiGrade } from '../services/aiClient'
+import { runAiGrade } from '../application/gradingService'
 import { submissionAiMatchPercent } from '../lib/textSimilarity'
 import { getSubmissionImageStorageMode } from '../services/config'
 import { resolveSubmissionImageWorkUrl } from '../services/storage/submissionImagePersistence'
@@ -44,12 +46,12 @@ async function toOcrInputFile(
   if (img.storageKind === 'gdrive' && img.driveFileId) {
     const clientId = import.meta.env.VITE_GOOGLE_OAUTH_CLIENT_ID?.trim()
     if (!clientId) {
-      throw new Error('Thiếu VITE_GOOGLE_OAUTH_CLIENT_ID trong file .env')
+      throw new Error(i18n.t('submissionImport.missingGoogleOAuth'))
     }
     const token =
       getStoredGoogleDriveAccessToken() ?? (await refreshGoogleDriveTokenSilent(clientId)) ?? undefined
     if (!token) {
-      throw new Error('Phiên Google Drive đã hết hạn. Hãy đăng xuất rồi đăng nhập lại.')
+      throw new Error(i18n.t('submissionImport.googleDriveSessionExpired'))
     }
     const blob = await downloadGoogleDriveFileBlob(token, img.driveFileId)
     return {
@@ -61,7 +63,7 @@ async function toOcrInputFile(
 
   const { url, revokeWhenDone } = await resolveSubmissionImageWorkUrl(img)
   if (!url) {
-    throw new Error('Không đọc được ảnh để chuyển chữ.')
+    throw new Error(i18n.t('submissionImport.imageReadForOcrFail'))
   }
   const file = await dataUrlToFile(url, img.name)
   return { file, cleanupObjectUrl: revokeWhenDone && url.startsWith('blob:') ? url : undefined }
@@ -82,6 +84,7 @@ function submissionForStudent(submissions: Submission[], examId: string, student
 
 // Full-screen camera and crop modal with react-image-crop
 function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; onClose: () => void }) {
+  const { t } = useTranslation()
   const videoRef = useRef<HTMLVideoElement>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [capturedUrl, setCapturedUrl] = useState<string | null>(null)
@@ -98,7 +101,7 @@ function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; on
         if (videoRef.current) videoRef.current.srcObject = s
       })
       .catch((err) => {
-        toast.error('Không thể truy cập camera')
+        toast.error(t('submissionImport.cameraDenied'))
         onClose()
       })
     return () => {
@@ -152,7 +155,9 @@ function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; on
     <div className="fixed top-0 left-0 w-screen h-[100dvh] z-[9999] bg-black flex flex-col items-center justify-center sm:p-4 touch-none">
       <div className="bg-black sm:bg-white sm:rounded-2xl w-full h-full sm:max-w-xl sm:h-[90vh] overflow-hidden flex flex-col relative">
         <div className="p-4 flex justify-between items-center text-white sm:text-slate-900 absolute top-0 left-0 right-0 z-10 sm:relative sm:border-b sm:border-slate-100 bg-black/40 sm:bg-transparent">
-          <h3 className="font-semibold">{capturedUrl ? 'Cắt ảnh' : 'Chụp ảnh'}</h3>
+          <h3 className="font-semibold">
+            {capturedUrl ? t('submissionImportUi.titleCrop') : t('submissionImportUi.titleCapture')}
+          </h3>
           <button onClick={onClose} className="p-2 -mr-2 font-bold hover:opacity-80">✕</button>
         </div>
         
@@ -177,11 +182,26 @@ function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; on
 
         <div className="p-4 flex justify-end gap-3 absolute bottom-0 left-0 right-0 z-10 sm:relative sm:border-t sm:border-slate-100 bg-black/60 sm:bg-white backdrop-blur-sm sm:backdrop-blur-none">
           {!capturedUrl ? (
-            <button className="w-full sm:w-auto bg-emerald-600 text-white px-6 py-3 sm:py-2 rounded-xl font-medium" onClick={handleCapture}>Chụp</button>
+            <button
+              className="w-full sm:w-auto bg-emerald-600 text-white px-6 py-3 sm:py-2 rounded-xl font-medium"
+              onClick={handleCapture}
+            >
+              {t('submissionImportUi.capture')}
+            </button>
           ) : (
             <>
-              <button className="flex-1 sm:flex-none px-4 py-3 sm:py-2 text-sm text-white sm:text-slate-600 hover:bg-slate-800 sm:hover:bg-slate-50 rounded-xl" onClick={() => setCapturedUrl(null)}>Chụp lại</button>
-              <button className="flex-1 sm:flex-none bg-emerald-600 text-white px-6 py-3 sm:py-2 rounded-xl font-medium" onClick={handleSave}>Lưu ảnh</button>
+              <button
+                className="flex-1 sm:flex-none px-4 py-3 sm:py-2 text-sm text-white sm:text-slate-600 hover:bg-slate-800 sm:hover:bg-slate-50 rounded-xl"
+                onClick={() => setCapturedUrl(null)}
+              >
+                {t('submissionImportUi.retake')}
+              </button>
+              <button
+                className="flex-1 sm:flex-none bg-emerald-600 text-white px-6 py-3 sm:py-2 rounded-xl font-medium"
+                onClick={handleSave}
+              >
+                {t('submissionImportUi.saveImage')}
+              </button>
             </>
           )}
         </div>
@@ -192,6 +212,7 @@ function CameraCropModal({ onSave, onClose }: { onSave: (file: File) => void; on
 
 
 export default function SubmissionImportPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { examId } = useParams()
   const exams = useAppStore((s) => s.exams)
@@ -249,9 +270,9 @@ export default function SubmissionImportPage() {
       // Append to existing instead of replace if capturing from camera?
       // Wait, original code replaces. We will keep replace to match input type="file" multiple.
       await setSubmissionImages(submissionId, simplified)
-      toast.success(`Đã lưu ${simplified.length} ảnh.`)
+      toast.success(t('submissionImport.imagesSaved', { n: simplified.length }))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không lưu được ảnh (kiểm tra Drive / Firebase / Console).')
+      toast.error(e instanceof Error ? e.message : t('submissionImport.imagesSaveFail'))
     } finally {
       setLoadingPick(null)
     }
@@ -276,9 +297,9 @@ export default function SubmissionImportPage() {
     
     try {
       await setSubmissionImages(subId, [...existingImages, newImg])
-      toast.success('Đã thêm ảnh vừa chụp.')
+      toast.success(t('submissionImport.captureOk'))
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không lưu được ảnh.')
+      toast.error(e instanceof Error ? e.message : t('submissionImport.captureFail'))
     }
   }
 
@@ -287,7 +308,7 @@ export default function SubmissionImportPage() {
     if (!examId) return false
     const sub = submissionForStudent(useAppStore.getState().submissions, examId, studentId)
     if (!sub || sub.imageFiles.length === 0) {
-      if (!silent) toast.error('Chưa có ảnh.')
+      if (!silent) toast.error(t('submissionImport.noImages'))
       return false
     }
     try {
@@ -305,10 +326,10 @@ export default function SubmissionImportPage() {
         }
       }
       useAppStore.getState().replaceSubmissionOcrPages(sub.id, pages)
-      if (!silent) toast.success(`Đã chuyển xong.`)
+      if (!silent) toast.success(t('submissionImport.convertOk'))
       return true
     } catch (e) {
-      if (!silent) toast.error(e instanceof Error ? e.message : 'Không chuyển được ảnh sang chữ.')
+      if (!silent) toast.error(e instanceof Error ? e.message : t('submissionImport.convertFail'))
       return false
     }
   }
@@ -320,7 +341,7 @@ export default function SubmissionImportPage() {
     if (!sub || !student) return false
     const text = sub.ocrPages.map((p) => p.correctedText).join('\n').trim()
     if (!text) {
-      if (!silent) toast.error('Chưa có chữ từ ảnh.')
+      if (!silent) toast.error(t('submissionImport.noText'))
       return false
     }
     try {
@@ -337,10 +358,10 @@ export default function SubmissionImportPage() {
         teacherGradingExperience: getTeacherGradingExperienceCached()
       })
       await useAppStore.getState().setGradingResult(sub.id, result)
-      if (!silent) toast.success('Đã chấm xong.')
+      if (!silent) toast.success(t('submissionImport.gradeOk'))
       return true
     } catch (e) {
-      if (!silent) toast.error(e instanceof Error ? e.message : String(e))
+      if (!silent) toast.error(e instanceof Error ? e.message : t('submissionImport.gradeUnknownError'))
       return false
     }
   }
@@ -392,7 +413,7 @@ export default function SubmissionImportPage() {
       return sub && sub.imageFiles.length > 0
     })
     if (targets.length === 0) {
-      toast.info('Không có học sinh nào có ảnh để chuyển.')
+      toast.info(t('submissionImport.bulkConvertNone'))
       return
     }
     
@@ -404,7 +425,7 @@ export default function SubmissionImportPage() {
       if (ok) success++
     }
     setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
-    toast.success(`Đã chuyển xong ${success}/${targets.length} học sinh.`)
+    toast.success(t('submissionImport.bulkConvertOk', { success, total: targets.length }))
   }
 
   async function executeGradeAll() {
@@ -414,7 +435,7 @@ export default function SubmissionImportPage() {
       return sub && sub.ocrPages.length > 0
     })
     if (targets.length === 0) {
-      toast.info('Không có học sinh nào có chữ để chấm.')
+      toast.info(t('submissionImport.bulkGradeNone'))
       return
     }
 
@@ -426,7 +447,7 @@ export default function SubmissionImportPage() {
       if (ok) success++
     }
     setProcessingState({ type: null, current: 0, total: 0, activeStudentId: null })
-    toast.success(`Đã chấm xong ${success}/${targets.length} học sinh.`)
+    toast.success(t('submissionImport.bulkGradeOk', { success, total: targets.length }))
   }
 
   async function confirmWarnModal() {
@@ -452,8 +473,10 @@ export default function SubmissionImportPage() {
   if (!exam) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8">
-        <div className="text-lg font-semibold text-slate-900">Không tìm thấy bài kiểm tra</div>
-        <Link to="/" className="text-emerald-700 text-sm mt-4 inline-block">← Trang chủ</Link>
+        <div className="text-lg font-semibold text-slate-900">{t('submissionImportUi.notFoundExam')}</div>
+        <Link to="/" className="text-emerald-700 text-sm mt-4 inline-block">
+          {t('nav.backHome')}
+        </Link>
       </div>
     )
   }
@@ -495,7 +518,7 @@ export default function SubmissionImportPage() {
 
   const ensureHasSelection = (): boolean => {
     if (selectedStudentsForExport.length === 0) {
-      toast.error('Hãy tick chọn ít nhất 1 học sinh đã có kết quả chấm.')
+      toast.error(t('submissionImport.exportNeedSelection'))
       return false
     }
     return true
@@ -508,23 +531,23 @@ export default function SubmissionImportPage() {
       students: selectedStudentsForExport,
       submissions: selectedSubmissions
     })
-    toast.success('Đã xuất PDF chi tiết.')
+    toast.success(t('submissionImport.exportPdfDetail'))
   }
 
   const onExportSummaryPdf = () => {
     if (!ensureHasSelection()) return
     exportSelectedResultsSummaryPdf(exportRows, exam.title)
-    toast.success('Đã xuất PDF bảng điểm.')
+    toast.success(t('submissionImport.exportPdfSummary'))
   }
 
   const onExportExcel = async () => {
     if (!ensureHasSelection()) return
     await exportSelectedResultsToExcel(exportRows, exam.title)
-    toast.success('Đã xuất Excel bảng điểm.')
+    toast.success(t('submissionImport.exportExcel'))
   }
 
   const handleDeleteImage = async (subId: string, imgId: string) => {
-    if (!globalThis.confirm('Bạn có chắc chắn muốn xóa ảnh này không?')) return
+    if (!globalThis.confirm(t('submissionImport.confirmDeleteImage'))) return
     const sub = submissions.find((s) => s.id === subId)
     if (!sub) return
     try {
@@ -533,7 +556,7 @@ export default function SubmissionImportPage() {
         sub.imageFiles.filter((img) => img.id !== imgId)
       )
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không cập nhật được danh sách ảnh.')
+      toast.error(e instanceof Error ? e.message : t('submissionImport.updateImagesFail'))
     }
   }
 
@@ -542,14 +565,17 @@ export default function SubmissionImportPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Nhập bài làm</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('submissionImportUi.title')}</h1>
           <p className="text-sm text-slate-600 mt-1">
-            {exam.title} · Lớp {classes.find((c) => c.id === exam.classId)?.name ?? '—'}
+            {t('submissionImportUi.examMeta', {
+              title: exam.title,
+              className: classes.find((c) => c.id === exam.classId)?.name ?? t('pdf.dash')
+            })}
             {driveModeActive ? (
               <span className="block mt-1 text-xs text-slate-500">
-                Lưu ảnh Drive:{' '}
+                {t('submissionImportUi.driveHint')}{' '}
                 <Link to="/profile" className="font-medium text-emerald-800 hover:underline">
-                  Cài đặt → Kết nối Drive / thư mục
+                  {t('submissionImportUi.driveLink')}
                 </Link>
               </span>
             ) : null}
@@ -561,14 +587,14 @@ export default function SubmissionImportPage() {
             onClick={requestConvertAll}
             className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
           >
-            Chuyển tất cả ảnh sang chữ
+            {t('submissionImportUi.convertAll')}
           </button>
           <button 
             disabled={isBusy}
             onClick={requestGradeAll}
             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
           >
-            Chấm điểm cả lớp
+            {t('submissionImportUi.gradeAllClass')}
           </button>
         </div>
       </div>
@@ -576,10 +602,8 @@ export default function SubmissionImportPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-slate-900">Xuất báo cáo kết quả</div>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Tick học sinh đã chấm để xuất PDF chi tiết (kiểu Duyệt kết quả), PDF bảng điểm hoặc Excel.
-            </p>
+            <div className="text-sm font-semibold text-slate-900">{t('submissionImportUi.exportSection')}</div>
+            <p className="text-xs text-slate-600 mt-0.5">{t('submissionImportUi.exportBlurb')}</p>
           </div>
           <label className="text-xs font-medium text-slate-700 flex items-center gap-2">
             <input
@@ -588,7 +612,7 @@ export default function SubmissionImportPage() {
               onChange={toggleSelectAllExport}
               className="rounded border-slate-300"
             />
-            Chọn tất cả đã chấm ({gradedStudents.length})
+            {t('submissionImportUi.selectAllGraded', { count: gradedStudents.length })}
           </label>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -597,21 +621,21 @@ export default function SubmissionImportPage() {
             onClick={onExportDetailedPdf}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50"
           >
-            Export PDF chi tiết
+            {t('submissionImportUi.exportPdfDetailBtn')}
           </button>
           <button
             type="button"
             onClick={onExportSummaryPdf}
             className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-800 hover:bg-slate-50"
           >
-            Export PDF bảng điểm
+            {t('submissionImportUi.exportPdfTableBtn')}
           </button>
           <button
             type="button"
             onClick={() => void onExportExcel()}
             className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
           >
-            Export Excel bảng điểm
+            {t('submissionImportUi.exportExcelBtn')}
           </button>
         </div>
       </div>
@@ -620,8 +644,24 @@ export default function SubmissionImportPage() {
       {isBusy && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm flex flex-col gap-2">
           <div className="flex justify-between text-sm font-medium text-emerald-800">
-            <span>Đang {processingState.type === 'convert' ? 'chuyển ảnh sang chữ' : 'chấm điểm'}...</span>
-            <span>{Math.round((processingState.current / processingState.total) * 100)}% ({processingState.current}/{processingState.total})</span>
+            <span>
+              {t('submissionImportUi.processing', {
+                action:
+                  processingState.type === 'convert'
+                    ? t('submissionImportUi.actionConvert')
+                    : t('submissionImportUi.actionGrade')
+              })}
+            </span>
+            <span>
+              {t('submissionImportUi.progressPercent', {
+                pct:
+                  processingState.total > 0
+                    ? Math.round((processingState.current / processingState.total) * 100)
+                    : 0,
+                current: processingState.current,
+                total: processingState.total
+              })}
+            </span>
           </div>
           <div className="h-2 w-full rounded-full bg-emerald-200 overflow-hidden">
             <div 
@@ -635,21 +675,37 @@ export default function SubmissionImportPage() {
       {/* Table */}
       {classStudents.length === 0 ? (
         <div className="rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-950">
-          Chưa có học sinh trong lớp.
+          {t('submissionImportUi.emptyRoster')}
         </div>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-x-auto">
           <table className="min-w-[1000px] w-full text-sm">
             <thead className="bg-slate-50 text-left border-b border-slate-100">
               <tr>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Chọn export</th>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Họ và tên</th>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap min-w-[180px]">Ảnh bài làm</th>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Xem trước</th>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Chuyển ảnh sang chữ</th>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Khớp AI</th>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Chấm điểm</th>
-                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">Kết quả</th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {t('submissionImportUi.thExport')}
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {t('submissionImportUi.thName')}
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap min-w-[180px]">
+                  {t('submissionImportUi.thImages')}
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {t('submissionImportUi.thPreview')}
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {t('submissionImportUi.thConvert')}
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {t('submissionImportUi.thAiMatch')}
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {t('submissionImportUi.thGrade')}
+                </th>
+                <th className="px-4 py-3 font-semibold text-slate-700 whitespace-nowrap">
+                  {t('submissionImportUi.thResult')}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -671,7 +727,7 @@ export default function SubmissionImportPage() {
                         disabled={!hasGraded}
                         onChange={() => toggleStudentExport(st.id)}
                         className="rounded border-slate-300"
-                        title={hasGraded ? 'Chọn để export' : 'Cần chấm điểm trước'}
+                        title={hasGraded ? t('submissionImportUi.exportTitleOk') : t('submissionImportUi.exportTitleNeedGrade')}
                       />
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-900">
@@ -690,20 +746,26 @@ export default function SubmissionImportPage() {
                           className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium hover:bg-slate-50 disabled:opacity-50"
                           onClick={() => fileInputsRef.current[st.id]?.click()}
                         >
-                          Tải lên
+                          {t('submissionImportUi.upload')}
                         </button>
                         <button
                           type="button" disabled={isBusy}
                           className="rounded-lg bg-slate-100 text-slate-700 px-2.5 py-1.5 text-xs font-medium hover:bg-slate-200 disabled:opacity-50"
                           onClick={() => setActiveCameraStudentId(st.id)}
                         >
-                          Chụp ảnh
+                          {t('submissionImportUi.takePhoto')}
                         </button>
                       </div>
-                      {nImg > 0 && <div className="text-[10px] text-slate-500 mt-1">{nImg} ảnh</div>}
+                      {nImg > 0 && (
+                        <div className="text-[10px] text-slate-500 mt-1">
+                          {t('submissionImportUi.imageCount', { n: nImg })}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      {nImg === 0 || !sub ? <span className="text-slate-300">—</span> : (
+                      {nImg === 0 || !sub ? (
+                        <span className="text-slate-300">{t('pdf.dash')}</span>
+                      ) : (
                         <div className="flex gap-2 flex-wrap">
                           {sub.imageFiles.map((img) => (
                             <div key={img.id} className="relative group">
@@ -716,7 +778,7 @@ export default function SubmissionImportPage() {
                                 onClick={() => handleDeleteImage(sub.id, img.id)}
                                 disabled={isBusy}
                                 className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full flex items-center justify-center text-[10px] font-bold opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-0"
-                                title="Xoá ảnh"
+                                title={t('submissionImportUi.deleteImage')}
                               >
                                 ✕
                               </button>
@@ -732,7 +794,7 @@ export default function SubmissionImportPage() {
                           className="rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-xs font-medium hover:bg-emerald-700 disabled:opacity-40 whitespace-nowrap"
                           onClick={() => requestConvert(st.id)}
                         >
-                          {isThisConverting ? 'Đang chuyển…' : 'Chuyển sang chữ'}
+                          {isThisConverting ? t('submissionImportUi.convertingShort') : t('submissionImportUi.convertToText')}
                         </button>
                         {hasPages && sub && (
                           <button
@@ -740,13 +802,17 @@ export default function SubmissionImportPage() {
                             className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs font-medium hover:bg-slate-50 whitespace-nowrap text-slate-600"
                             onClick={() => navigate(`/submissions/${sub.id}/sua-bai`)}
                           >
-                            Sửa chữ
+                            {t('submissionImportUi.editText')}
                           </button>
                         )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600 tabular-nums">
-                      {hasPages && sub ? `${submissionAiMatchPercent(sub.ocrPages)}%` : <span className="text-slate-300">—</span>}
+                      {hasPages && sub ? (
+                        `${submissionAiMatchPercent(sub.ocrPages)}%`
+                      ) : (
+                        <span className="text-slate-300">{t('pdf.dash')}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <button
@@ -754,7 +820,7 @@ export default function SubmissionImportPage() {
                         className="rounded-lg bg-slate-800 text-white px-3 py-1.5 text-xs font-medium hover:bg-slate-900 disabled:opacity-40 whitespace-nowrap"
                         onClick={() => requestGrade(st.id)}
                       >
-                        {isThisGrading ? 'Đang chấm…' : 'Chấm điểm'}
+                        {isThisGrading ? t('submissionImportUi.gradingShort') : t('submissionImportUi.gradeScore')}
                       </button>
                     </td>
                     <td className="px-4 py-3">
@@ -763,7 +829,7 @@ export default function SubmissionImportPage() {
                         className="rounded-lg border border-emerald-200 text-emerald-800 px-3 py-1.5 text-xs font-medium hover:bg-emerald-50 disabled:opacity-40 whitespace-nowrap"
                         onClick={() => navigate(`/submissions/${sub?.id}/review`)}
                       >
-                        Kết quả
+                        {t('submissionImportUi.viewResult')}
                       </button>
                     </td>
                   </tr>
@@ -786,14 +852,26 @@ export default function SubmissionImportPage() {
       {warnModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 space-y-4 border border-slate-100">
-            <h3 className="font-semibold text-slate-900 text-lg">Cảnh báo ghi đè</h3>
+            <h3 className="font-semibold text-slate-900 text-lg">{t('submissionImportUi.warnTitle')}</h3>
             <p className="text-sm text-slate-600 leading-relaxed">
-              {(warnModal.type === 'convert' || warnModal.type === 'convert_all') && 'Học sinh này đã có chữ (có thể đã chỉnh sửa tay). Bạn có chắc muốn chạy AI nhận diện lại và ghi đè?'}
-              {(warnModal.type === 'grade' || warnModal.type === 'grade_all') && 'Học sinh này đã có kết quả chấm điểm. Chấm lại sẽ thay thế kết quả và nhận xét cũ.'}
+              {(warnModal.type === 'convert' || warnModal.type === 'convert_all') &&
+                t('submissionImportUi.warnOverwriteConvert')}
+              {(warnModal.type === 'grade' || warnModal.type === 'grade_all') &&
+                t('submissionImportUi.warnOverwriteGrade')}
             </p>
             <div className="flex justify-end gap-2 pt-2">
-              <button className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50" onClick={() => setWarnModal(null)}>Huỷ</button>
-              <button className="rounded-xl bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700" onClick={confirmWarnModal}>Ghi đè</button>
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium hover:bg-slate-50"
+                onClick={() => setWarnModal(null)}
+              >
+                {t('submissionImportUi.cancel')}
+              </button>
+              <button
+                className="rounded-xl bg-red-600 text-white px-4 py-2 text-sm font-medium hover:bg-red-700"
+                onClick={confirmWarnModal}
+              >
+                {t('submissionImportUi.overwrite')}
+              </button>
             </div>
           </div>
         </div>

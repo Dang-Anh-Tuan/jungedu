@@ -1,24 +1,15 @@
 import React, { useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
+import { runAiGrade } from '../application/gradingService'
+import { mistakeTypeLabelVi } from '../lib/mistakeLabels'
 import { sumGradingScores } from '../lib/rubric'
 import { useTeacherGradingExperiencePref } from '../services/appSettings/teacherGradingExperiencePref'
 import { useAppStore } from '../state/appStore'
-import { runAiGrade } from '../services/aiClient'
-
-function mistakeTypeVi(t: string) {
-  const map: Record<string, string> = {
-    spelling: 'Chính tả',
-    repeat: 'Lặp ý',
-    grammar: 'Ngữ pháp',
-    missing_idea: 'Thiếu ý',
-    structure: 'Bố cục',
-    other: 'Khác'
-  }
-  return map[t] ?? t.replaceAll('_', ' ')
-}
 
 export default function GradingPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { submissionId } = useParams()
   const teacherGradingExperience = useTeacherGradingExperiencePref()
@@ -72,7 +63,7 @@ export default function GradingPage() {
       })
 
       await setGradingResult(submission.id, result)
-      toast.success('Đã có kết quả chấm AI.')
+      toast.success(t('grading.toastOk'))
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
     } finally {
@@ -83,7 +74,7 @@ export default function GradingPage() {
   if (!submission) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8">
-        <div className="text-lg font-semibold text-slate-900">Không tìm thấy bài làm</div>
+        <div className="text-lg font-semibold text-slate-900">{t('grading.notFound')}</div>
       </div>
     )
   }
@@ -94,13 +85,13 @@ export default function GradingPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Chấm bằng AI</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('grading.title')}</h1>
           <p className="text-sm text-slate-600 mt-1">
-            Dựa trên chữ đã đối chiếu · học sinh: <strong>{submission.studentName}</strong>
+            {t('grading.subtitlePrefix')} <strong>{submission.studentName}</strong>
           </p>
         </div>
         <button type="button" className="text-sm text-slate-600 hover:text-slate-900" onClick={() => navigate(-1)}>
-          ← Trở lại
+          {t('grading.back')}
         </button>
       </div>
 
@@ -111,29 +102,28 @@ export default function GradingPage() {
           disabled={running || !combinedText.trim()}
           onClick={onRunGrade}
         >
-          {running ? 'Đang chấm…' : grading ? 'Chấm lại (ghi đè)' : 'Chạy chấm AI'}
+          {running ? t('grading.running') : grading ? t('grading.rerun') : t('grading.run')}
         </button>
       </div>
 
       {!grading && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
-          Chưa có kết quả. Bấm «Chạy chấm AI» để nhận điểm gợi ý và nhận xét.
-        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">{t('grading.empty')}</div>
       )}
 
       {grading && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2 space-y-5 shadow-sm">
-            <div className="text-2xl font-semibold text-slate-900">Điểm gợi ý: {grading.score.toFixed(1)}/10</div>
+            <div className="text-2xl font-semibold text-slate-900">
+              {t('grading.scoreSuggested', { score: grading.score.toFixed(1) })}
+            </div>
             <p className="text-sm text-slate-500">
-              Tổng điểm theo rubric (cộng các mục): {sumGradingScores(grading.rubric).toFixed(1)} (tham khảo; điểm tổng
-              hiển thị là score)
+              {t('grading.scoreHint', { sum: sumGradingScores(grading.rubric).toFixed(1) })}
             </p>
 
             <div className="border-t border-slate-100 pt-4 space-y-2">
-              <div className="font-semibold text-slate-800">Điểm mạnh</div>
+              <div className="font-semibold text-slate-800">{t('grading.strengths')}</div>
               {grading.strengths.length === 0 ? (
-                <div className="text-sm text-slate-500">Không có điểm mạnh nổi bật.</div>
+                <div className="text-sm text-slate-500">{t('grading.noStrengths')}</div>
               ) : (
                 <ul className="list-disc ml-5 text-sm text-slate-700 space-y-1">
                   {grading.strengths.map((s, idx) => (
@@ -144,16 +134,22 @@ export default function GradingPage() {
             </div>
 
             <div className="border-t border-slate-100 pt-4 space-y-2">
-              <div className="font-semibold text-slate-800">Lỗi / cần lưu ý</div>
+              <div className="font-semibold text-slate-800">{t('grading.issues')}</div>
               {grading.mistakes.length === 0 ? (
-                <div className="text-sm text-slate-500">Không phát hiện lỗi cụ thể.</div>
+                <div className="text-sm text-slate-500">{t('grading.noIssues')}</div>
               ) : (
                 <div className="space-y-3">
                   {grading.mistakes.slice(0, 20).map((m, idx) => (
                     <div key={idx} className="rounded-xl border border-slate-100 p-4 bg-slate-50/50">
-                      <div className="text-sm font-semibold text-slate-800">{mistakeTypeVi(m.type)}</div>
-                      <div className="text-sm text-slate-700 mt-1">Đoạn gốc: {m.original}</div>
-                      {m.suggestion && <div className="text-sm text-slate-700">Gợi ý: {m.suggestion}</div>}
+                      <div className="text-sm font-semibold text-slate-800">{mistakeTypeLabelVi(m.type)}</div>
+                      <div className="text-sm text-slate-700 mt-1">
+                        {t('grading.segmentOriginal')} {m.original}
+                      </div>
+                      {m.suggestion && (
+                        <div className="text-sm text-slate-700">
+                          {t('grading.suggestion')} {m.suggestion}
+                        </div>
+                      )}
                       {m.explanation && <div className="text-sm text-slate-500 mt-2">{m.explanation}</div>}
                     </div>
                   ))}
@@ -162,21 +158,25 @@ export default function GradingPage() {
             </div>
 
             <div className="border-t border-slate-100 pt-4 space-y-2">
-              <div className="font-semibold text-slate-800">Gợi ý viết lại</div>
-              <div className="text-sm text-slate-700 whitespace-pre-wrap">{grading.rewriteSuggestion || '(Không có)'}</div>
+              <div className="font-semibold text-slate-800">{t('grading.rewrite')}</div>
+              <div className="text-sm text-slate-700 whitespace-pre-wrap">
+                {grading.rewriteSuggestion || t('grading.none')}
+              </div>
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm h-fit">
-            <div className="font-semibold text-slate-800">Nhận xét (AI)</div>
-            <div className="text-sm text-slate-700 whitespace-pre-wrap">{grading.teacherComment || '(Không có)'}</div>
+            <div className="font-semibold text-slate-800">{t('grading.aiComment')}</div>
+            <div className="text-sm text-slate-700 whitespace-pre-wrap">
+              {grading.teacherComment || t('grading.none')}
+            </div>
 
             <div className="border-t border-slate-100 pt-4">
-              <div className="text-sm text-slate-500 mb-2">Chi tiết rubric</div>
+              <div className="text-sm text-slate-500 mb-2">{t('grading.rubricDetail')}</div>
               <div className="text-sm space-y-1 text-slate-700">
                 {exam?.rubric.map((c) => (
                   <div key={c.id}>
-                    {c.label}: {grading.rubric[c.id] ?? '—'}
+                    {c.label}: {grading.rubric[c.id] ?? t('grading.rubricDash')}
                   </div>
                 ))}
               </div>
@@ -188,7 +188,7 @@ export default function GradingPage() {
               disabled={!grading}
               onClick={() => navigate(`/submissions/${submission.id}/review`)}
             >
-              Giáo viên duyệt & chỉnh sửa
+              {t('grading.reviewCta')}
             </button>
           </div>
         </div>

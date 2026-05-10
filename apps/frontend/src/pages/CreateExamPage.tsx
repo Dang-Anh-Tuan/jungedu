@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
   DEFAULT_RUBRIC_CRITERIA,
@@ -8,27 +9,21 @@ import {
   type RubricCriterion
 } from '../lib/rubric'
 import { useAppStore } from '../state/appStore'
+import { DEMO_EXAM_DEFAULTS } from '../config/demoExamDefaults'
 
 const teacherStyleOptions = ['encouraging', 'neutral', 'strict'] as const
 
-const styleLabel: Record<(typeof teacherStyleOptions)[number], string> = {
-  encouraging: 'Nhẹ nhàng, động viên',
-  neutral: 'Trung lập',
-  strict: 'Nghiêm khắc hơn'
-}
-
 export default function CreateExamPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const classes = useAppStore((s) => s.classes)
   const createExam = useAppStore((s) => s.createExam)
 
   const [classId, setClassId] = useState('')
-  const [title, setTitle] = useState('Tả cây mít')
-  const [subject, setSubject] = useState('Tập làm văn')
-  const [grade, setGrade] = useState(4)
-  const [requirements, setRequirements] = useState(
-    'Viết đúng chủ đề, có đủ mở bài/thân bài/kết bài. Hạn chế lỗi chính tả.'
-  )
+  const [title, setTitle] = useState(DEMO_EXAM_DEFAULTS.title)
+  const [subject, setSubject] = useState(DEMO_EXAM_DEFAULTS.subject)
+  const [grade, setGrade] = useState(DEMO_EXAM_DEFAULTS.grade)
+  const [requirements, setRequirements] = useState(DEMO_EXAM_DEFAULTS.requirements)
   const [teacherStyle, setTeacherStyle] = useState<(typeof teacherStyleOptions)[number]>('encouraging')
 
   const [rubric, setRubric] = useState<RubricCriterion[]>(() =>
@@ -42,7 +37,7 @@ export default function CreateExamPage() {
   const selectedClass = classes.find((c) => c.id === classId)
 
   function addCriterion() {
-    setRubric((r) => [...r, { id: createRubricCriterionId(), label: 'Tiêu chí mới', weight: 1 }])
+    setRubric((r) => [...r, { id: createRubricCriterionId(), label: t('createExam.newCriterion'), weight: 1 }])
   }
 
   function removeCriterion(id: string) {
@@ -63,7 +58,7 @@ export default function CreateExamPage() {
       }))
       .filter((c) => c.label.length > 0)
     if (cleaned.length === 0) {
-      toast.error('Cần ít nhất một tiêu chí rubric có tên.')
+      toast.error(t('createExam.toastRubricEmpty'))
       return
     }
     setSaving(true)
@@ -77,10 +72,10 @@ export default function CreateExamPage() {
         rubric: cleaned,
         teacherStyle
       })
-      toast.success('Đã tạo bài kiểm tra.')
+      toast.success(t('createExam.toastOk'))
       navigate(`/exams/${examId}/submissions/new`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Không tạo được bài kiểm tra.')
+      toast.error(e instanceof Error ? e.message : t('createExam.toastFail'))
     } finally {
       setSaving(false)
     }
@@ -90,29 +85,29 @@ export default function CreateExamPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Tạo bài kiểm tra</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('createExam.title')}</h1>
           <p className="text-sm text-slate-600 mt-1">
-            Học sinh lấy từ <strong>lớp đã import Excel</strong> — quản lý tại{' '}
+            {t('createExam.subtitlePrefix')} <strong>{t('createExam.subtitleStrong')}</strong> {t('createExam.subtitleSuffix')}{' '}
             <Link to="/classes" className="text-emerald-700 font-medium hover:underline">
-              Trang Lớp
+              {t('createExam.classesLink')}
             </Link>
             .
           </p>
         </div>
         <Link to="/" className="text-sm text-slate-600 hover:text-slate-900">
-          ← Trang chủ
+          {t('createExam.home')}
         </Link>
       </div>
 
       {classes.length === 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950 space-y-2">
-          <p className="font-medium">Cần có ít nhất một lớp để tạo bài kiểm tra.</p>
+          <p className="font-medium">{t('createExam.needClass')}</p>
           <p>
-            Vào{' '}
+            {t('createExam.goClasses')}{' '}
             <Link to="/classes" className="text-emerald-800 font-semibold underline">
-              Trang Lớp
+              {t('createExam.classesLink')}
             </Link>{' '}
-            để tạo lớp và import danh sách (Excel).
+            {t('createExam.goClassesSuffix')}
           </p>
         </div>
       ) : null}
@@ -121,9 +116,9 @@ export default function CreateExamPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-              <h2 className="font-semibold text-slate-800">Thông tin bài</h2>
+              <h2 className="font-semibold text-slate-800">{t('createExam.infoTitle')}</h2>
               <label className="block text-sm">
-                <span className="text-slate-600">Lớp *</span>
+                <span className="text-slate-600">{t('createExam.classLabel')}</span>
                 <select
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                   value={classId}
@@ -131,23 +126,23 @@ export default function CreateExamPage() {
                   required
                 >
                   <option value="" disabled>
-                    — Chọn lớp —
+                    {t('createExam.classPlaceholder')}
                   </option>
                   {classes.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
-                      {c.grade != null ? ` · Khối ${c.grade}` : ''}
+                      {c.grade != null ? t('classes.gradeSuffix', { grade: c.grade }) : ''}
                     </option>
                   ))}
                 </select>
               </label>
               {selectedClass && (
                 <p className="text-xs text-slate-500">
-                  Bài kiểm tra sẽ chỉ chọn học sinh thuộc lớp <strong>{selectedClass.name}</strong>.
+                  {t('createExam.classHint', { name: selectedClass.name })}
                 </p>
               )}
               <label className="block text-sm">
-                <span className="text-slate-600">Tên bài</span>
+                <span className="text-slate-600">{t('createExam.examTitle')}</span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                   value={title}
@@ -155,7 +150,7 @@ export default function CreateExamPage() {
                 />
               </label>
               <label className="block text-sm">
-                <span className="text-slate-600">Môn</span>
+                <span className="text-slate-600">{t('createExam.subject')}</span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                   value={subject}
@@ -163,7 +158,7 @@ export default function CreateExamPage() {
                 />
               </label>
               <label className="block text-sm">
-                <span className="text-slate-600">Khối lớp</span>
+                <span className="text-slate-600">{t('createExam.grade')}</span>
                 <input
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                   type="number"
@@ -172,7 +167,7 @@ export default function CreateExamPage() {
                 />
               </label>
               <label className="block text-sm">
-                <span className="text-slate-600">Phong cách nhận xét AI</span>
+                <span className="text-slate-600">{t('createExam.aiStyle')}</span>
                 <select
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
                   value={teacherStyle}
@@ -180,7 +175,11 @@ export default function CreateExamPage() {
                 >
                   {teacherStyleOptions.map((s) => (
                     <option key={s} value={s}>
-                      {styleLabel[s]}
+                      {s === 'encouraging'
+                        ? t('createExam.styleEncouraging')
+                        : s === 'neutral'
+                          ? t('createExam.styleNeutral')
+                          : t('createExam.styleStrict')}
                     </option>
                   ))}
                 </select>
@@ -188,9 +187,9 @@ export default function CreateExamPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-              <h2 className="font-semibold text-slate-800">Yêu cầu & thang điểm (rubric)</h2>
+              <h2 className="font-semibold text-slate-800">{t('createExam.rubricTitle')}</h2>
               <label className="block text-sm">
-                <span className="text-slate-600">Yêu cầu bài</span>
+                <span className="text-slate-600">{t('createExam.requirements')}</span>
                 <textarea
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 min-h-[120px]"
                   value={requirements}
@@ -200,13 +199,13 @@ export default function CreateExamPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-700">Đầu mục & trọng số</span>
+                  <span className="text-sm font-medium text-slate-700">{t('createExam.criteriaHeading')}</span>
                   <button
                     type="button"
                     onClick={addCriterion}
                     className="text-sm text-emerald-700 font-medium hover:underline"
                   >
-                    + Thêm tiêu chí
+                    {t('createExam.addCriterion')}
                   </button>
                 </div>
                 <ul className="space-y-2">
@@ -216,7 +215,7 @@ export default function CreateExamPage() {
                       className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2"
                     >
                       <label className="block text-sm flex-1 min-w-[140px]">
-                        <span className="text-xs text-slate-500">Tên tiêu chí</span>
+                        <span className="text-xs text-slate-500">{t('createExam.criterionName')}</span>
                         <input
                           className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
                           value={c.label}
@@ -224,7 +223,7 @@ export default function CreateExamPage() {
                         />
                       </label>
                       <label className="block text-sm w-24">
-                        <span className="text-xs text-slate-500">Trọng số</span>
+                        <span className="text-xs text-slate-500">{t('createExam.weight')}</span>
                         <input
                           className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
                           type="number"
@@ -239,15 +238,15 @@ export default function CreateExamPage() {
                         disabled={rubric.length <= 1}
                         onClick={() => removeCriterion(c.id)}
                         className="text-xs text-red-600 hover:text-red-700 disabled:opacity-30 px-2 py-2"
-                        title="Xóa tiêu chí"
+                        title={t('createExam.removeCriterion')}
                       >
-                        Xóa
+                        {t('createExam.removeCriterion')}
                       </button>
                     </li>
                   ))}
                 </ul>
               </div>
-              <p className="text-sm text-slate-500">Tổng trọng số rubric: {totalRubric}</p>
+              <p className="text-sm text-slate-500">{t('createExam.totalWeight', { total: totalRubric })}</p>
             </div>
           </div>
 
@@ -258,7 +257,7 @@ export default function CreateExamPage() {
               onClick={() => void onCreateExam()}
               disabled={!title.trim() || !classId || saving}
             >
-              {saving ? 'Đang lưu…' : 'Tạo bài & nhập bài làm'}
+              {saving ? t('createExam.saving') : t('createExam.save')}
             </button>
           </div>
         </>

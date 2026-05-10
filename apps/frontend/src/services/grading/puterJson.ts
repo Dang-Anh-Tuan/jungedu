@@ -1,26 +1,35 @@
 import puter from '@heyputer/puter.js'
+import i18n from 'i18next'
 import { z } from 'zod'
 
+import { LIMITS, TIMING } from '../../config/constants'
+import { JSON_ONLY_FOLLOWUP } from '../../prompts/gradingPrompts'
 import { extractTextFromAiChatResponse } from '../imageToText/extract'
 
 import { extractFirstJsonObject } from './extractJson'
 
-/** Timeout (ms) cho mỗi lần gọi Puter AI — 3 phút */
-const AI_TIMEOUT_MS = 3 * 60 * 1000
-
-function withTimeout<T>(promise: Promise<T>, ms: number, label = 'AI'): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  const sec = ms / 1000
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timeout sau ${ms / 1000}s — thử lại nhé!`)), ms)
+    const timer = setTimeout(() => {
+      reject(new Error(i18n.t('errors.aiTimeout', { label, seconds: sec })))
+    }, ms)
     promise.then(
-      (v) => { clearTimeout(timer); resolve(v) },
-      (e) => { clearTimeout(timer); reject(e) }
+      (v) => {
+        clearTimeout(timer)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(timer)
+        reject(e)
+      }
     )
   })
 }
 
 /**
  * Gọi Puter AI chat với nội dung JSON mong đợi; validate bằng Zod.
- * Tương đương `callOpenAiAndValidate` phía server (OpenAI SDK).
+ * Đổi vendor: thay implementation bằng OpenAI SDK / fetch backend.
  */
 export async function callPuterJson<T>({
   messages,
@@ -37,8 +46,7 @@ export async function callPuterJson<T>({
     ...messages,
     {
       role: 'user',
-      content:
-        'Return ONLY valid JSON that matches the expected schema. Do not wrap in markdown code fences unless necessary; output must be parseable JSON.'
+      content: JSON_ONLY_FOLLOWUP
     }
   ]
 
@@ -46,15 +54,15 @@ export async function callPuterJson<T>({
     puter.ai.chat(withJsonHint as never, {
       model,
       temperature,
-      max_tokens: 8192
+      max_tokens: LIMITS.GRADING_MAX_TOKENS
     }),
-    AI_TIMEOUT_MS,
+    TIMING.AI_CHAT_TIMEOUT_MS,
     `Puter AI (${model})`
   )
 
   const raw = extractTextFromAiChatResponse(resp)
   if (!raw?.trim()) {
-    throw new Error('Puter AI không trả về nội dung (JSON). Kiểm tra model / quota.')
+    throw new Error(i18n.t('errors.puterEmptyResponse'))
   }
   const jsonText = extractFirstJsonObject(raw)
   const parsed = JSON.parse(jsonText)

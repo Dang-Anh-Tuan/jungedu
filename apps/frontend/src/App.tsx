@@ -1,4 +1,5 @@
 import React from 'react'
+import { useTranslation } from 'react-i18next'
 import { Navigate, Route, Routes, useParams } from 'react-router-dom'
 import AppLayout from './layouts/AppLayout'
 import LoginPage from './pages/LoginPage'
@@ -27,11 +28,12 @@ function RedirectExamBulkToNew() {
 
 export default function App() {
   const { status } = useAuthStore()
+  const { t } = useTranslation()
 
   if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-600">
-        Đang kiểm tra đăng nhập...
+        {t('app.loadingAuth')}
       </div>
     )
   }

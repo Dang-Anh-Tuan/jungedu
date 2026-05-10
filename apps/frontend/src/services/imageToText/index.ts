@@ -1,3 +1,4 @@
+import i18n from '../../i18n/i18n'
 import { IMAGE_TO_TEXT_PROVIDER, type ImageToTextProviderId } from '../config'
 
 import type { ImageToTextResult } from './types'
@@ -23,6 +24,6 @@ export async function runImageToText(file: File): Promise<ImageToTextResult> {
       return runOpenAiVision(file)
     }
     default:
-      throw new Error(`VITE_IMAGE_TO_TEXT_PROVIDER không hợp lệ: ${String(p)}`)
+      throw new Error(i18n.t('errors.imageProvider', { provider: String(p) }))
   }
 }

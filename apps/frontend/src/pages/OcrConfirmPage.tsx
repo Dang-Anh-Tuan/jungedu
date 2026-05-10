@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { computeDraftVsAiSegments } from '../lib/draftAiDiff'
 import { useAppStore } from '../state/appStore'
+import { TIMING } from '../config/constants'
 
 export default function OcrConfirmPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { submissionId } = useParams()
   const submissions = useAppStore((s) => s.submissions)
@@ -55,7 +58,7 @@ export default function OcrConfirmPage() {
     const pid = selectedPage.id
     const t = window.setTimeout(() => {
       useAppStore.getState().setOcrPageCorrectedText(submissionId!, pid, draftText)
-    }, 450)
+    }, TIMING.OCR_DRAFT_SAVE_MS)
     return () => window.clearTimeout(t)
   }, [draftText, submissionId, selectedPage?.id, selectedPage?.correctedText])
 
@@ -73,9 +76,9 @@ export default function OcrConfirmPage() {
   if (!submission) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8">
-        <div className="text-lg font-semibold text-slate-900">Không tìm thấy bài làm</div>
+        <div className="text-lg font-semibold text-slate-900">{t('ocr.notFound')}</div>
         <Link to="/" className="text-emerald-700 text-sm mt-4 inline-block">
-          ← Trang chủ
+          {t('ocr.backHome')}
         </Link>
       </div>
     )
@@ -87,26 +90,26 @@ export default function OcrConfirmPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Đối chiếu ảnh và chữ</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('ocr.title')}</h1>
           <p className="text-sm text-slate-600 mt-1">
-            Học sinh: <strong>{submission.studentName}</strong> · Ảnh giữ đúng thứ tự đã chọn (theo tên file).
+            {t('ocr.subtitle', { name: submission.studentName })}
           </p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
           <Link to={backToImport} className="text-sm font-medium text-emerald-800 hover:underline py-1">
-            ← Về danh sách nhập bài
+            {t('ocr.backToImport')}
           </Link>
           <Link to="/" className="text-sm text-slate-600 hover:text-slate-900 py-1">
-            Trang chủ
+            {t('ocr.navHome')}
           </Link>
         </div>
       </div>
 
       {submission.imageFiles.length === 0 ? (
         <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Chưa có ảnh bài làm.{' '}
+          {t('ocr.noImagesLead')}{' '}
           <Link to={backToImport} className="font-medium underline">
-            Quay lại để chọn ảnh
+            {t('ocr.noImagesPickAgain')}
           </Link>
           .
         </div>
@@ -115,15 +118,18 @@ export default function OcrConfirmPage() {
           <p className="text-sm text-slate-600">
             {submission.ocrPages.length > 0 ? (
               <>
-                Đã có chữ cho {submission.ocrPages.length}/{submission.imageFiles.length} trang · chỉnh sửa được lưu tự động nhoaaa~ 🌸
+                {t('ocr.progressOk', {
+                  current: submission.ocrPages.length,
+                  total: submission.imageFiles.length
+                })}
               </>
             ) : (
               <span className="text-amber-800">
-                Chưa có chữ — quay về{' '}
+                {t('ocr.noTextPrefix')}{' '}
                 <Link to={backToImport} className="font-medium underline">
-                  danh sách nhập bài
+                  {t('ocr.noTextLink')}
                 </Link>{' '}
-                và bấm «Chuyển ảnh sang chữ».
+                {t('ocr.noTextSuffix')}
               </span>
             )}
           </p>
@@ -131,7 +137,7 @@ export default function OcrConfirmPage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               <div className="lg:col-span-2 space-y-3">
-                <div className="font-semibold text-slate-800">Ảnh gốc</div>
+                <div className="font-semibold text-slate-800">{t('ocr.originalImage')}</div>
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {submission.imageFiles.map((img, idx) => (
                     <button
@@ -142,14 +148,14 @@ export default function OcrConfirmPage() {
                       }`}
                       onClick={() => goToPage(idx)}
                     >
-                      Trang {idx + 1}
+                      {t('ocr.pageLabel', { n: idx + 1 })}
                     </button>
                   ))}
                 </div>
-                <p className="text-xs text-slate-500">
-                  Giữ phím <kbd className="rounded border border-slate-200 bg-slate-50 px-1">Shift</kbd> và cuộn chuột trong khung ảnh để zoom;
-                  ảnh sẽ phóng to trong khung cố định nhoaaa~ 🔍
-                </p>
+                <p
+                  className="text-xs text-slate-500"
+                  dangerouslySetInnerHTML={{ __html: t('ocr.zoomHint') }}
+                />
                 {submission.imageFiles[selectedPageIndex] && (
                   <ShiftWheelZoomImage
                     src={
@@ -163,7 +169,7 @@ export default function OcrConfirmPage() {
 
               <div className="lg:col-span-3 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="font-semibold text-slate-800">Chữ đọc được (sửa tay — tự lưu)</div>
+                  <div className="font-semibold text-slate-800">{t('ocr.correctedHeading')}</div>
                   <div className="flex flex-wrap items-center gap-2">
                     {selectedPage ? (
                       <label className="inline-flex items-center gap-2 cursor-pointer select-none">
@@ -183,12 +189,12 @@ export default function OcrConfirmPage() {
                           />
                         </span>
                         <span className="text-[11px] font-medium text-slate-700">
-                          {showAiCompare ? 'Đang so sánh với AI' : 'Đang sửa bản đối chiếu'}
+                          {showAiCompare ? t('ocr.modeCompareAi') : t('ocr.modeEdit')}
                         </span>
                       </label>
                     ) : null}
                     <p className="text-xs text-emerald-600 bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
-                      ✨ Khi bé nhập nội dung sẽ tự lưu nhoaaaa
+                      {t('ocr.autosaveBadge')}
                     </p>
                   </div>
                 </div>
@@ -196,12 +202,12 @@ export default function OcrConfirmPage() {
                 {selectedPage && showAiCompare ? (
                   <div className="rounded-xl border border-red-100 bg-red-50/40 p-3 space-y-2 min-h-[320px]">
                     <div className="text-xs font-semibold text-red-900">
-                      Đối chiếu với chữ AI —{' '}
-                      <span className="font-normal text-red-800">đoạn nền đỏ là phần khác bản AI đọc được</span>
+                      {t('ocr.diffHeading')}{' '}
+                      <span className="font-normal text-red-800">{t('ocr.diffHint')}</span>
                     </div>
                     <div className="whitespace-pre-wrap font-mono text-sm leading-relaxed text-slate-800 max-h-[240px] overflow-y-auto rounded-lg bg-white/80 border border-red-100 p-3">
                       {highlightSegments.length === 0 ? (
-                        <span className="text-slate-400">(Trống)</span>
+                        <span className="text-slate-400">{t('ocr.emptyParen')}</span>
                       ) : (
                         highlightSegments.map((s, idx) =>
                           s.kind === 'diff' ? (
@@ -222,9 +228,7 @@ export default function OcrConfirmPage() {
                     onChange={(e) => setDraftText(e.target.value)}
                     onBlur={() => saveDraftNow()}
                     placeholder={
-                      submission.ocrPages.length === 0
-                        ? 'Chưa có chữ — quay danh sách và bấm «Chuyển ảnh sang chữ» trước.'
-                        : ''
+                      submission.ocrPages.length === 0 ? t('ocr.textareaPlaceholder') : ''
                     }
                     disabled={!selectedPage}
                   />
@@ -237,12 +241,12 @@ export default function OcrConfirmPage() {
                     disabled={!combinedCorrectedText.trim()}
                     onClick={confirmBack}
                   >
-                    Xác nhận và quay lại danh sách
+                    {t('ocr.confirmBack')}
                   </button>
                 </div>
 
                 <p className="text-xs text-slate-500 pt-2 border-t border-slate-100">
-                  Dùng nút «Chấm điểm» trên dòng học sinh ở trang nhập bài để chạy AI; «Xem kết quả» khi đã chấm xong.
+                  {t('ocr.footerHint')}
                 </p>
               </div>
             </div>
@@ -254,6 +258,7 @@ export default function OcrConfirmPage() {
 }
 
 function ShiftWheelZoomImage({ src, alt }: { src: string; alt: string }) {
+  const { t } = useTranslation()
   const wrapRef = useRef<HTMLDivElement>(null)
   const [zoom, setZoom] = useState(1)
 
@@ -296,14 +301,16 @@ function ShiftWheelZoomImage({ src, alt }: { src: string; alt: string }) {
   return (
     <div className="space-y-1">
       <div className="text-xs text-slate-500 tabular-nums flex items-center gap-2">
-        <span>Zoom: {Math.round(zoom * 100)}%</span>
+        <span>
+          {t('ocr.zoomLabel')} {Math.round(zoom * 100)}%
+        </span>
         {zoom > 1 && (
           <button
             type="button"
             className="text-xs text-emerald-600 hover:underline"
             onClick={() => setZoom(1)}
           >
-            Reset
+            {t('ocr.zoomReset')}
           </button>
         )}
       </div>

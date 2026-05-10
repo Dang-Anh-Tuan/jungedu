@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
   createRubricCriterionId,
@@ -10,13 +11,8 @@ import { useAppStore } from '../state/appStore'
 
 const teacherStyleOptions = ['encouraging', 'neutral', 'strict'] as const
 
-const styleLabel: Record<(typeof teacherStyleOptions)[number], string> = {
-  encouraging: 'Nhẹ nhàng, động viên',
-  neutral: 'Trung lập',
-  strict: 'Nghiêm khắc hơn'
-}
-
 export default function EditExamPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const { examId } = useParams()
   const classes = useAppStore((s) => s.classes)
@@ -56,7 +52,7 @@ export default function EditExamPage() {
     rubric.some((c) => c.label.trim().length > 0)
 
   function addCriterion() {
-    setRubric((r) => [...r, { id: createRubricCriterionId(), label: 'Tiêu chí mới', weight: 1 }])
+    setRubric((r) => [...r, { id: createRubricCriterionId(), label: t('createExam.newCriterion'), weight: 1 }])
   }
 
   function removeCriterion(id: string) {
@@ -77,7 +73,7 @@ export default function EditExamPage() {
       }))
       .filter((c) => c.label.length > 0)
     if (cleaned.length === 0) {
-      toast.error('Cần ít nhất một tiêu chí rubric có tên.')
+      toast.error(t('editExam.toastRubricEmpty'))
       return
     }
     updateExam(examId, {
@@ -89,16 +85,16 @@ export default function EditExamPage() {
       rubric: cleaned,
       teacherStyle
     })
-    toast.success('Đã lưu thay đổi.')
+    toast.success(t('editExam.toastOk'))
     navigate('/')
   }
 
   if (!examId || !exam) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 space-y-4">
-        <p className="font-medium text-slate-900">Không tìm thấy bài kiểm tra.</p>
+        <p className="font-medium text-slate-900">{t('editExam.notFound')}</p>
         <Link to="/" className="text-emerald-700 text-sm">
-          ← Trang chủ
+          {t('editExam.home')}
         </Link>
       </div>
     )
@@ -108,34 +104,34 @@ export default function EditExamPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Sửa bài kiểm tra</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('editExam.title')}</h1>
           <p className="text-sm text-slate-600 mt-1">
-            Chỉnh yêu cầu / rubric / lớp.{' '}
+            {t('editExam.subtitle')}{' '}
             <Link to="/classes" className="text-emerald-700 font-medium hover:underline">
-              Trang Lớp
+              {t('editExam.classesLink')}
             </Link>
           </p>
         </div>
         <button type="button" className="text-sm text-slate-600 hover:text-slate-900" onClick={() => navigate(-1)}>
-          ← Quay lại
+          {t('editExam.back')}
         </button>
       </div>
 
       {classes.length === 0 ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          Chưa có lớp nào —{' '}
+          {t('editExam.noClasses')}{' '}
           <Link to="/classes" className="font-semibold underline">
-            tạo lớp và import học sinh
+            {t('editExam.noClassesLink')}
           </Link>{' '}
-          trước khi gán bài kiểm tra.
+          {t('editExam.noClassesSuffix')}
         </div>
       ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-          <h2 className="font-semibold text-slate-800">Thông tin bài</h2>
+          <h2 className="font-semibold text-slate-800">{t('createExam.infoTitle')}</h2>
           <label className="block text-sm">
-            <span className="text-slate-600">Lớp *</span>
+            <span className="text-slate-600">{t('createExam.classLabel')}</span>
             <select
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
               value={classId}
@@ -143,23 +139,21 @@ export default function EditExamPage() {
               required
             >
               <option value="" disabled>
-                — Chọn lớp —
+                {t('createExam.classPlaceholder')}
               </option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
-                  {c.grade != null ? ` · Khối ${c.grade}` : ''}
+                  {c.grade != null ? t('classes.gradeSuffix', { grade: c.grade }) : ''}
                 </option>
               ))}
             </select>
           </label>
           {selectedClass && (
-            <p className="text-xs text-slate-500">
-              Chỉ học sinh lớp <strong>{selectedClass.name}</strong> mới được chọn khi nhập bài.
-            </p>
+            <p className="text-xs text-slate-500">{t('editExam.classHint', { name: selectedClass.name })}</p>
           )}
           <label className="block text-sm">
-            <span className="text-slate-600">Tên bài</span>
+            <span className="text-slate-600">{t('createExam.examTitle')}</span>
             <input
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
               value={title}
@@ -167,7 +161,7 @@ export default function EditExamPage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="text-slate-600">Môn</span>
+            <span className="text-slate-600">{t('createExam.subject')}</span>
             <input
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
               value={subject}
@@ -175,7 +169,7 @@ export default function EditExamPage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="text-slate-600">Khối lớp</span>
+            <span className="text-slate-600">{t('createExam.grade')}</span>
             <input
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
               type="number"
@@ -184,7 +178,7 @@ export default function EditExamPage() {
             />
           </label>
           <label className="block text-sm">
-            <span className="text-slate-600">Phong cách nhận xét AI</span>
+            <span className="text-slate-600">{t('createExam.aiStyle')}</span>
             <select
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
               value={teacherStyle}
@@ -192,7 +186,11 @@ export default function EditExamPage() {
             >
               {teacherStyleOptions.map((s) => (
                 <option key={s} value={s}>
-                  {styleLabel[s]}
+                  {s === 'encouraging'
+                    ? t('createExam.styleEncouraging')
+                    : s === 'neutral'
+                      ? t('createExam.styleNeutral')
+                      : t('createExam.styleStrict')}
                 </option>
               ))}
             </select>
@@ -200,9 +198,9 @@ export default function EditExamPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-          <h2 className="font-semibold text-slate-800">Yêu cầu & rubric</h2>
+          <h2 className="font-semibold text-slate-800">{t('editExam.rubricSection')}</h2>
           <label className="block text-sm">
-            <span className="text-slate-600">Yêu cầu bài</span>
+            <span className="text-slate-600">{t('createExam.requirements')}</span>
             <textarea
               className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 min-h-[120px]"
               value={requirements}
@@ -212,13 +210,13 @@ export default function EditExamPage() {
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-700">Đầu mục & trọng số</span>
+              <span className="text-sm font-medium text-slate-700">{t('createExam.criteriaHeading')}</span>
               <button
                 type="button"
                 onClick={addCriterion}
                 className="text-sm text-emerald-700 font-medium hover:underline"
               >
-                + Thêm tiêu chí
+                {t('createExam.addCriterion')}
               </button>
             </div>
             <ul className="space-y-2">
@@ -228,7 +226,7 @@ export default function EditExamPage() {
                   className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2"
                 >
                   <label className="block text-sm flex-1 min-w-[140px]">
-                    <span className="text-xs text-slate-500">Tên tiêu chí</span>
+                    <span className="text-xs text-slate-500">{t('createExam.criterionName')}</span>
                     <input
                       className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
                       value={c.label}
@@ -236,7 +234,7 @@ export default function EditExamPage() {
                     />
                   </label>
                   <label className="block text-sm w-24">
-                    <span className="text-xs text-slate-500">Trọng số</span>
+                    <span className="text-xs text-slate-500">{t('createExam.weight')}</span>
                     <input
                       className="mt-0.5 w-full rounded border border-slate-200 px-2 py-1.5 text-sm"
                       type="number"
@@ -251,14 +249,15 @@ export default function EditExamPage() {
                     disabled={rubric.length <= 1}
                     onClick={() => removeCriterion(c.id)}
                     className="text-xs text-red-600 hover:text-red-700 disabled:opacity-30 px-2 py-2"
+                    title={t('editExam.removeCriterionTitle')}
                   >
-                    Xóa
+                    {t('createExam.removeCriterion')}
                   </button>
                 </li>
               ))}
             </ul>
           </div>
-          <p className="text-sm text-slate-500">Tổng trọng số rubric: {totalRubric}</p>
+          <p className="text-sm text-slate-500">{t('createExam.totalWeight', { total: totalRubric })}</p>
         </div>
       </div>
 
@@ -268,7 +267,7 @@ export default function EditExamPage() {
           className="rounded-xl border border-slate-200 px-6 py-2.5 font-medium hover:bg-slate-50"
           onClick={() => navigate('/')}
         >
-          Huỷ
+          {t('editExam.cancel')}
         </button>
         <button
           type="button"
@@ -276,7 +275,7 @@ export default function EditExamPage() {
           onClick={onSave}
           disabled={!canSave}
         >
-          Lưu thay đổi
+          {t('editExam.save')}
         </button>
       </div>
     </div>

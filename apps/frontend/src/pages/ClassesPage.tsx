@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAppStore } from '../state/appStore'
 import { parseExcelToStudentRows } from '../lib/excel'
 
+const EXCEL_FILENAME_EXAMPLE = 'HS01_1.jpg'
+
 export default function ClassesPage() {
+  const { t } = useTranslation()
   const classes = useAppStore((s) => s.classes)
   const students = useAppStore((s) => s.students)
   const createClass = useAppStore((s) => s.createClass)
@@ -64,22 +68,18 @@ export default function ClassesPage() {
       const buf = await file.arrayBuffer()
       parsed = parseExcelToStudentRows(buf)
     } catch {
-      toast.error('Không đọc được file Excel/CSV. Thử định dạng .xlsx hoặc kiểm tra file không bị khóa/mật khẩu.')
+      toast.error(t('classes.toastExcelReadFail'))
       return false
     }
     const { rows, skippedMissingCodeOrName } = parsed
     if (rows.length === 0) {
-      toast.error(
-        'Không đọc được dòng hợp lệ nào. Mỗi học sinh cần đủ «Mã HS» và «Họ tên»; «Học lực» và «Ghi chú» là tuỳ chọn. Kiểm tra sheet đầu và tiêu đề cột.'
-      )
+      toast.error(t('classes.toastImportEmpty'))
       return false
     }
     await importStudentsForClass(classId, rows)
     const skipHint =
-      skippedMissingCodeOrName > 0
-        ? ` Đã bỏ qua ${skippedMissingCodeOrName} dòng thiếu mã hoặc thiếu tên.`
-        : ''
-    toast.success(`Đã cập nhật danh sách: ${rows.length} học sinh (thay toàn bộ).${skipHint}`)
+      skippedMissingCodeOrName > 0 ? t('classes.skipHint', { n: skippedMissingCodeOrName }) : ''
+    toast.success(t('classes.toastImportOk', { count: rows.length, skipHint }))
     return true
   }
 
@@ -104,10 +104,10 @@ export default function ClassesPage() {
       if (excelFileEarly) {
         await importExcelForClass(id, excelFileEarly)
       } else {
-        toast.success('Đã tạo lớp. Bạn có thể nhập Excel ở chi tiết lớp — nút «Cập nhật danh sách».')
+        toast.success(t('classes.toastCreateClassOk'))
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Có lỗi xảy ra.')
+      toast.error(err instanceof Error ? err.message : t('classes.toastGenericError'))
     } finally {
       setBusy(false)
     }
@@ -121,7 +121,7 @@ export default function ClassesPage() {
       const ok = await importExcelForClass(selectedId, file)
       if (ok) closeImportModal()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Lỗi đọc file Excel.')
+      toast.error(e instanceof Error ? e.message : t('classes.toastExcelError'))
     } finally {
       setBusy(false)
     }
@@ -129,32 +129,30 @@ export default function ClassesPage() {
 
   function onDeleteSelected() {
     if (!selected) return
-    if (confirm('Xoá lớp này? Học sinh và bài kiểm tra thuộc lớp sẽ bị xoá theo.')) {
+    if (confirm(t('classes.confirmDeleteClass'))) {
       const rest = classes.filter((c) => c.id !== selected.id)
       deleteClass(selected.id)
       setSelectedId(rest[0]?.id ?? '')
-      toast.success('Đã xóa lớp.')
+      toast.success(t('classes.toastDeleteClass'))
     }
   }
 
   const formCreate = (
     <form onSubmit={onCreateClassAndMaybeImport} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
-      <h2 className="font-semibold text-slate-800">Thêm lớp</h2>
-      <p className="text-xs text-slate-600">
-        Điền tên lớp và có thể chọn file Excel ngay — danh sách sẽ được nhập sau khi lớp được tạo.
-      </p>
+      <h2 className="font-semibold text-slate-800">{t('classes.addClass')}</h2>
+      <p className="text-xs text-slate-600">{t('classes.formIntro')}</p>
       <label className="block text-sm">
-        <span className="text-slate-600">Tên lớp *</span>
+        <span className="text-slate-600">{t('classes.className')}</span>
         <input
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           value={newClassName}
           onChange={(e) => setNewClassName(e.target.value)}
-          placeholder="Ví dụ: 4A1"
+          placeholder={t('classes.classNamePlaceholder')}
           required
         />
       </label>
       <label className="block text-sm">
-        <span className="text-slate-600">Khối (tuỳ chọn)</span>
+        <span className="text-slate-600">{t('classes.gradeOptional')}</span>
         <input
           className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
           type="number"
@@ -164,7 +162,7 @@ export default function ClassesPage() {
         />
       </label>
       <label className="block text-sm">
-        <span className="text-slate-600">Danh sách học sinh (.xlsx, .xls, .csv) — tuỳ chọn</span>
+        <span className="text-slate-600">{t('classes.excelOptional')}</span>
         <input ref={createFileRef} type="file" accept=".xlsx,.xls,.csv" disabled={busy} className="mt-1 block w-full text-sm" />
       </label>
       <button
@@ -172,7 +170,7 @@ export default function ClassesPage() {
         disabled={busy}
         className="w-full rounded-lg bg-slate-900 text-white py-2.5 text-sm font-medium disabled:opacity-50"
       >
-        {busy ? 'Đang xử lý…' : 'Thêm lớp và nhập danh sách'}
+        {busy ? t('classes.processing') : t('classes.submitAdd')}
       </button>
     </form>
   )
@@ -180,7 +178,7 @@ export default function ClassesPage() {
   const classList =
     classes.length > 0 ? (
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="font-semibold text-slate-800 mb-3">Danh sách lớp</h2>
+        <h2 className="font-semibold text-slate-800 mb-3">{t('classes.classList')}</h2>
         <ul className="space-y-1 max-h-72 overflow-auto">
           {classes.map((c) => (
             <li key={c.id}>
@@ -192,7 +190,7 @@ export default function ClassesPage() {
                 onClick={() => setSelectedId(c.id)}
               >
                 {c.name}
-                {c.grade != null ? ` · Khối ${c.grade}` : ''}
+                {c.grade != null ? t('classes.gradeSuffix', { grade: c.grade }) : ''}
               </button>
             </li>
           ))}
@@ -202,32 +200,19 @@ export default function ClassesPage() {
 
   const excelGuide = (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3 text-sm text-slate-700">
-      <div className="font-semibold text-slate-900">Định dạng file Excel (sheet đầu tiên)</div>
+      <div className="font-semibold text-slate-900">{t('classes.excelHeader')}</div>
       <ul className="list-disc ml-5 space-y-2">
-        <li>
-          <strong>Dòng 1</strong>: tiêu đề cột (khuyến nghị). <strong>Dòng 2 trở đi</strong>: mỗi dòng một học sinh.
-        </li>
-        <li>
-          <strong className="text-slate-900">Mã học sinh</strong> —{' '}
-          <span className="text-emerald-800 font-medium">bắt buộc</span> («Mã HS», «Mã học sinh», «Code»…) – khớp phần đầu tên file khi ghép ảnh (
-          <code className="text-xs bg-white px-1 rounded border border-slate-200">HS01_1.jpg</code>).
-        </li>
-        <li>
-          <strong className="text-slate-900">Họ và tên</strong> —{' '}
-          <span className="text-emerald-800 font-medium">bắt buộc</span> – nhận diện tiêu đề kiểu «Họ và tên», «Họ tên», «Name»…
-        </li>
-        <li>
-          <strong className="text-slate-900">Học lực</strong> —{' '}
-          <span className="text-slate-600">tuỳ chọn</span> («Học lực», «XL», «Xếp loại»…) – gửi kèm AI khi chấm.
-        </li>
-        <li>
-          <strong className="text-slate-900">Ghi chú</strong> —{' '}
-          <span className="text-slate-600">tuỳ chọn</span> («Ghi chú», «Chú ý», «Notes»…) – ví dụ học sinh giỏi, kỳ vọng cao hơn.
-        </li>
+        {(['excelLi1', 'excelLi2', 'excelLi3', 'excelLi4', 'excelLi5'] as const).map((key) => (
+          <li
+            key={key}
+            // Chuỗi đến từ file dịch nội bộ (tin cậy)
+            dangerouslySetInnerHTML={{
+              __html: t(`classes.${key}`, { fileExample: EXCEL_FILENAME_EXAMPLE })
+            }}
+          />
+        ))}
       </ul>
-      <p className="text-xs text-slate-500 pt-2 border-t border-slate-200">
-        «Học lực» và «Ghi chú» có thể để trống. Thứ tự cột không bắt buộc miễn là tiêu đề khớp một trong các gợi ý trên.
-      </p>
+      <p className="text-xs text-slate-500 pt-2 border-t border-slate-200">{t('classes.excelFooter')}</p>
     </div>
   )
 
@@ -236,7 +221,7 @@ export default function ClassesPage() {
   const detailPanel = selected ? (
     <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold text-slate-800">Danh sách · {selected.name}</h2>
+        <h2 className="font-semibold text-slate-800">{t('classes.rosterTitle', { name: selected.name })}</h2>
         <div className="flex flex-wrap gap-2 items-center">
           <button
             type="button"
@@ -244,14 +229,14 @@ export default function ClassesPage() {
             disabled={busy}
             onClick={openImportModal}
           >
-            Cập nhật danh sách
+            {t('classes.updateRoster')}
           </button>
           <button
             type="button"
             className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
             onClick={onDeleteSelected}
           >
-            Xóa
+            {t('classes.deleteClass')}
           </button>
         </div>
       </div>
@@ -260,28 +245,32 @@ export default function ClassesPage() {
         <table className="min-w-full text-sm">
           <thead>
             <tr className="bg-slate-50 text-left text-slate-600">
-              <th className="px-3 py-2 font-medium whitespace-nowrap">STT</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Mã HS</th>
-              <th className="px-3 py-2 font-medium">Họ tên</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Học lực</th>
-              <th className="px-3 py-2 font-medium min-w-[140px]">Ghi chú</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">{t('classes.stt')}</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">{t('classes.colCode')}</th>
+              <th className="px-3 py-2 font-medium">{t('classes.colName')}</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">{t('classes.colRank')}</th>
+              <th className="px-3 py-2 font-medium min-w-[140px]">{t('classes.colNotes')}</th>
             </tr>
           </thead>
           <tbody>
             {roster.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                  Chưa có học sinh — bấm «Cập nhật danh sách» để chọn file Excel.
+                  {t('classes.noStudents')}
                 </td>
               </tr>
             ) : (
               roster.map((s, i) => (
                 <tr key={s.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 whitespace-nowrap">{i + 1}</td>
-                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">{s.studentCode ?? '—'}</td>
+                  <td className="px-3 py-2 font-mono text-xs whitespace-nowrap">
+                    {s.studentCode ?? t('pdf.dash')}
+                  </td>
                   <td className="px-3 py-2">{s.name}</td>
-                  <td className="px-3 py-2 text-slate-700">{s.hocLuc ?? '—'}</td>
-                  <td className="px-3 py-2 text-slate-600 max-w-[280px]">{s.notes?.trim() ? s.notes : '—'}</td>
+                  <td className="px-3 py-2 text-slate-700">{s.hocLuc ?? t('pdf.dash')}</td>
+                  <td className="px-3 py-2 text-slate-600 max-w-[280px]">
+                    {s.notes?.trim() ? s.notes : t('pdf.dash')}
+                  </td>
                 </tr>
               ))
             )}
@@ -302,25 +291,23 @@ export default function ClassesPage() {
           <div className="w-full max-w-lg max-h-[min(90vh,720px)] overflow-y-auto rounded-2xl bg-white shadow-xl border border-slate-200 p-6 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <h3 id="import-modal-title" className="text-lg font-semibold text-slate-900">
-                Cập nhật danh sách học sinh
+                {t('classes.importModalTitle')}
               </h3>
               <button
                 type="button"
                 className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100 text-xl leading-none"
                 onClick={closeImportModal}
-                aria-label="Đóng"
+                aria-label={t('classes.close')}
               >
                 ×
               </button>
             </div>
-            <p className="text-sm text-slate-600">
-              Lớp: <strong>{selected.name}</strong>. Thao tác này <strong>thay toàn bộ</strong> danh sách hiện tại bằng dữ liệu trong file.
-            </p>
+            <p className="text-sm text-slate-600">{t('classes.importModalIntro', { name: selected.name })}</p>
 
             {excelGuide}
 
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">Chọn file</label>
+              <label className="block text-sm font-medium text-slate-700">{t('classes.pickFile')}</label>
               <input
                 ref={modalFileRef}
                 type="file"
@@ -333,7 +320,9 @@ export default function ClassesPage() {
                   setImportConfirmChecked(false)
                 }}
               />
-              {modalFileChosen && <p className="text-xs text-slate-600">Đã chọn: {modalPickLabel}</p>}
+              {modalFileChosen && (
+                <p className="text-xs text-slate-600">{t('classes.chosenFile', { name: modalPickLabel })}</p>
+              )}
             </div>
 
             <label className="flex items-start gap-2 cursor-pointer">
@@ -344,10 +333,7 @@ export default function ClassesPage() {
                 onChange={(e) => setImportConfirmChecked(e.target.checked)}
                 disabled={!modalFileChosen || busy}
               />
-              <span className="text-sm text-slate-700">
-                Tôi đã đọc hướng dẫn định dạng và <strong>xác nhận thay thế toàn bộ</strong> danh sách học sinh của lớp này bằng dữ liệu
-                từ file đã chọn.
-              </span>
+              <span className="text-sm text-slate-700">{t('classes.confirmReplace')}</span>
             </label>
 
             <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-slate-100">
@@ -357,7 +343,7 @@ export default function ClassesPage() {
                 onClick={closeImportModal}
                 disabled={busy}
               >
-                Huỷ
+                {t('classes.cancel')}
               </button>
               <button
                 type="button"
@@ -365,7 +351,7 @@ export default function ClassesPage() {
                 disabled={busy || !modalFileChosen || !importConfirmChecked}
                 onClick={onConfirmModalImport}
               >
-                {busy ? 'Đang cập nhật…' : 'Xác nhận cập nhật'}
+                {busy ? t('classes.importing') : t('classes.confirmImport')}
               </button>
             </div>
           </div>
@@ -374,7 +360,7 @@ export default function ClassesPage() {
     </div>
   ) : (
     <div className="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-600 shadow-sm">
-      Chọn một lớp ở danh sách bên trái để xem danh sách.
+      {t('classes.selectClass')}
     </div>
   )
 
@@ -382,27 +368,24 @@ export default function ClassesPage() {
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Lớp</h1>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('classes.title')}</h1>
           <p className="text-sm text-slate-600 mt-1">
-            Tạo lớp và nhập Excel ngay hoặc cập nhật sau. <strong>Mã HS</strong> dùng khi nhập ảnh theo lớp (
-            <code className="text-xs bg-slate-100 px-1 rounded">HS01_1.jpg</code>).
+            {t('classes.subtitle', { example: EXCEL_FILENAME_EXAMPLE })}
           </p>
         </div>
         <Link
           to="/exams/new"
           className="rounded-xl bg-emerald-600 text-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-emerald-700 transition-colors"
         >
-          Tạo bài kiểm tra
+          {t('classes.createExamCta')}
         </Link>
       </div>
 
       {classes.length === 0 ? (
         <div className="space-y-6">
           <div className="rounded-2xl border border-amber-100 bg-amber-50/80 px-6 py-10 text-center">
-            <p className="text-lg font-semibold text-amber-950">Chưa có dữ liệu lớp học</p>
-            <p className="text-sm text-amber-900/90 mt-2 max-w-lg mx-auto">
-              Thêm ít nhất một lớp bên dưới. Bạn có thể đính kèm file Excel trong cùng bước để có danh sách học sinh ngay.
-            </p>
+            <p className="text-lg font-semibold text-amber-950">{t('classes.emptyStateTitle')}</p>
+            <p className="text-sm text-amber-900/90 mt-2 max-w-lg mx-auto">{t('classes.emptyStateBody')}</p>
           </div>
           {excelGuide}
           {formCreate}

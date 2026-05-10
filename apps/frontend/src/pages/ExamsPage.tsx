@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { useAppStore } from '../state/appStore'
 
 export default function ExamsPage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const exams = useAppStore((s) => s.exams)
   const classes = useAppStore((s) => s.classes)
@@ -29,27 +31,27 @@ export default function ExamsPage() {
   }, [submissions])
 
   function classLabel(classId: string) {
-    return classes.find((c) => c.id === classId)?.name ?? 'Lớp'
+    return classes.find((c) => c.id === classId)?.name ?? t('defaults.classFallback')
   }
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Danh sách Bài kiểm tra</h1>
-          <p className="text-sm text-slate-600 mt-1">Quản lý và chấm điểm tất cả các bài kiểm tra đã tạo.</p>
+          <h1 className="text-2xl font-semibold text-slate-900">{t('examsPage.title')}</h1>
+          <p className="text-sm text-slate-600 mt-1">{t('examsPage.subtitle')}</p>
         </div>
         <Link
           to="/exams/new"
           className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors"
         >
-          + Tạo bài kiểm tra mới
+          {t('examsPage.newExam')}
         </Link>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         {exams.length === 0 ? (
-          <div className="px-6 py-12 text-center text-sm text-slate-500">Chưa có bài nào — hãy tạo bài kiểm tra đầu tiên.</div>
+          <div className="px-6 py-12 text-center text-sm text-slate-500">{t('examsPage.empty')}</div>
         ) : (
           <ul className="divide-y divide-slate-100">
             {exams
@@ -63,7 +65,7 @@ export default function ExamsPage() {
                     <div>
                       <div className="font-medium text-slate-900">{exam.title}</div>
                       <div className="text-sm text-slate-500 mt-0.5">
-                        {classLabel(exam.classId)} · Khối {exam.grade} · {exam.subject}
+                        {classLabel(exam.classId)} · {t('dashboard.gradeBlock')} {exam.grade} · {exam.subject}
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 justify-end items-center">
@@ -72,7 +74,7 @@ export default function ExamsPage() {
                         className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium hover:bg-slate-50"
                         onClick={() => navigate(`/exams/${exam.id}/edit`)}
                       >
-                        Sửa
+                        {t('dashboard.edit')}
                       </button>
                       <button
                         type="button"
@@ -80,37 +82,33 @@ export default function ExamsPage() {
                         onClick={async () => {
                           try {
                             const nid = await cloneExam(exam.id)
-                            toast.success(`Đã nhân bản «${exam.title}».`)
+                            toast.success(t('dashboard.toastCloneOk', { title: exam.title }))
                             navigate(`/exams/${nid}/edit`)
                           } catch (e) {
-                            toast.error(e instanceof Error ? e.message : 'Không nhân bản được bài kiểm tra.')
+                            toast.error(e instanceof Error ? e.message : t('dashboard.toastCloneFail'))
                           }
                         }}
                       >
-                        Nhân bản
+                        {t('dashboard.duplicate')}
                       </button>
                       <button
                         type="button"
                         className="rounded-lg border border-red-200 text-red-700 px-3 py-1.5 text-xs font-medium hover:bg-red-50"
                         onClick={() => {
-                          if (
-                            window.confirm(
-                              `Xoá bài «${exam.title}»? Toàn bộ bài làm và kết quả chấm của bài này sẽ bị xoá.`
-                            )
-                          ) {
+                          if (window.confirm(t('dashboard.confirmDelete', { title: exam.title }))) {
                             deleteExam(exam.id)
-                            toast.success(`Đã xóa «${exam.title}».`)
+                            toast.success(t('dashboard.toastDeleteOk', { title: exam.title }))
                           }
                         }}
                       >
-                        Xoá
+                        {t('dashboard.delete')}
                       </button>
                       <button
                         type="button"
                         className="rounded-lg bg-emerald-600 text-white px-3 py-1.5 text-sm hover:bg-emerald-700"
                         onClick={() => navigate(`/exams/${exam.id}/submissions/new`)}
                       >
-                        Chấm bài ({subs} bài · {graded} đã chấm AI)
+                        {t('dashboard.gradeButton', { subs, graded })}
                       </button>
                     </div>
                   </li>

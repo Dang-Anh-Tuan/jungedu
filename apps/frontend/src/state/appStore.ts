@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Exam, GradingResult, SchoolClass, Submission, Student, SubmissionImageFile } from '../types'
+import i18n from '../i18n/i18n'
 import {
   batchReplaceStudentsForClassDocs,
   createDocumentId,
@@ -11,7 +12,7 @@ import {
   setSchoolClassDoc,
   setSubmissionDoc,
   stripImageFilesForFirestore
-} from '../services/firebase'
+} from '../platform/persistence'
 import {
   cleanupRemovedSubmissionImages,
   persistUploadedSubmissionImages,
@@ -56,16 +57,16 @@ type AppState = {
 
 export const useAppStore = create<AppState>((set, get) => ({
   isSyncing: true,
-  teacherName: 'Thầy/Cô',
+  teacherName: i18n.t('defaults.teacherName'),
   classes: [],
   students: [],
   exams: [],
   submissions: [],
-  setTeacherName: (name) => set({ teacherName: name.trim() || 'Thầy/Cô' }),
+  setTeacherName: (name) => set({ teacherName: name.trim() || i18n.t('defaults.teacherName') }),
   resetForLogout: () =>
     set({
       isSyncing: false,
-      teacherName: 'Thầy/Cô',
+      teacherName: i18n.t('defaults.teacherName'),
       classes: [],
       students: [],
       exams: [],
@@ -113,7 +114,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   importStudentsForClass: async (classId, rows) => {
     const cid = typeof classId === 'string' ? classId.trim() : ''
-    if (!cid) throw new Error('Thiếu mã lớp (classId).')
+    if (!cid) throw new Error(i18n.t('store.missingClassId'))
 
     const cleaned = rows
       .map((r) => ({
@@ -174,7 +175,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   cloneExam: async (examId) => {
     const ex = get().exams.find((e) => e.id === examId)
-    if (!ex) throw new Error('Không tìm thấy bài kiểm tra')
+    if (!ex) throw new Error(i18n.t('store.examNotFound'))
     const id = createDocumentId('exam')
     const titleBase = ex.title.trim()
     const copy: Exam = {
@@ -193,8 +194,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   createSubmission: async ({ examId, studentId }) => {
     const exam = get().exams.find((e) => e.id === examId)
     const student = get().students.find((st) => st.id === studentId)
-    if (!exam || !student) throw new Error('Không tìm thấy bài hoặc học sinh')
-    if (student.classId !== exam.classId) throw new Error('Học sinh không thuộc lớp của bài kiểm tra')
+    if (!exam || !student) throw new Error(i18n.t('store.examOrStudentNotFound'))
+    if (student.classId !== exam.classId) throw new Error(i18n.t('store.studentWrongClass'))
 
     const id = createDocumentId('submission')
     const submission: Submission = {
