@@ -9,7 +9,7 @@ import {
   rubricJsonShapeExample
 } from '../../prompts/gradingPrompts'
 import { LIMITS, TIMING } from '../../config/constants'
-import { GEMINI_GRADING_MODEL } from '../config'
+import { GEMINI_GRADING_MODEL, GEMINI_GRADING_MODELS } from '../config'
 import {
   GeminiBatchGradingRootLooseSchema,
   GeminiSingleGradingRootLooseSchema,
@@ -90,6 +90,7 @@ async function gradeWithRubric({
     messages,
     schema: GeminiSingleGradingRootLooseSchema,
     model: GEMINI_GRADING_MODEL,
+    modelList: GEMINI_GRADING_MODELS,
     temperature: 0
   })
 
@@ -156,6 +157,7 @@ async function gradeEssaysBatchOneChunk({
     messages,
     schema: GeminiBatchGradingRootLooseSchema,
     model: GEMINI_GRADING_MODEL,
+    modelList: GEMINI_GRADING_MODELS,
     temperature: 0,
     maxOutputTokens: LIMITS.BATCH_GRADING_MAX_TOKENS,
     timeoutMs: TIMING.AI_BULK_TIMEOUT_MS

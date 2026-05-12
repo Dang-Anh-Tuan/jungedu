@@ -1,30 +1,34 @@
-import { GoogleGenerativeAI, type Part } from '@google/generative-ai'
-import i18n from 'i18next'
-import { z } from 'zod'
+import { GoogleGenerativeAI, type Part } from "@google/generative-ai";
+import i18n from "i18next";
+import { z } from "zod";
 
-import { GEMINI_API_KEY } from '../../config/env'
-import { LIMITS, TIMING } from '../../config/constants'
-import { JSON_ONLY_FOLLOWUP } from '../../prompts/gradingPrompts'
+import { GEMINI_API_KEY, withModelFallback } from "../../config/env";
+import { LIMITS, TIMING } from "../../config/constants";
+import { JSON_ONLY_FOLLOWUP } from "../../prompts/gradingPrompts";
 
-import { extractFirstJsonObject } from './extractJson'
+import { extractFirstJsonObject } from "./extractJson";
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  const sec = ms / 1000
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  const sec = ms / 1000;
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
-      reject(new Error(i18n.t('errors.aiTimeout', { label, seconds: sec })))
-    }, ms)
+      reject(new Error(i18n.t("errors.aiTimeout", { label, seconds: sec })));
+    }, ms);
     promise.then(
       (v) => {
-        clearTimeout(timer)
-        resolve(v)
+        clearTimeout(timer);
+        resolve(v);
       },
       (e) => {
-        clearTimeout(timer)
-        reject(e)
-      }
-    )
-  })
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
 }
 
 /**
@@ -35,63 +39,87 @@ export async function callGeminiJson<T>({
   messages,
   schema,
   model,
+  modelList,
   temperature = 0,
   maxOutputTokens = LIMITS.GRADING_MAX_TOKENS,
-  timeoutMs = TIMING.AI_CHAT_TIMEOUT_MS
+  timeoutMs = TIMING.AI_CHAT_TIMEOUT_MS,
 }: {
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
-  schema: z.ZodType<T>
-  model: string
-  temperature?: number
-  maxOutputTokens?: number
-  timeoutMs?: number
+  messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+  schema: z.ZodType<T>;
+  model: string;
+  /** Danh sách model fallback — nếu truyền, tự động thử từng model khi bị rate-limit. */
+  modelList?: readonly string[];
+  temperature?: number;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
 }): Promise<T> {
-  const key = GEMINI_API_KEY.trim()
+  const key = GEMINI_API_KEY.trim();
   if (!key) {
-    throw new Error(i18n.t('errors.geminiMissingKey'))
+    throw new Error(i18n.t("errors.geminiMissingKey"));
   }
 
-  const systemParts = messages.filter((m) => m.role === 'system').map((m) => m.content)
-  const systemInstruction = systemParts.length > 0 ? systemParts.join('\n\n') : undefined
+  /** Hàm gọi thực tế cho một model cụ thể. */
+  async function runWithModel(activeModel: string): Promise<T> {
+    const systemParts = messages
+      .filter((m) => m.role === "system")
+      .map((m) => m.content);
+    const systemInstruction =
+      systemParts.length > 0 ? systemParts.join("\n\n") : undefined;
 
-  const userText =
-    messages
-      .filter((m) => m.role === 'user')
-      .map((m) => m.content)
-      .join('\n\n') +
-    '\n\n' +
-    JSON_ONLY_FOLLOWUP
+    const userText =
+      messages
+        .filter((m) => m.role === "user")
+        .map((m) => m.content)
+        .join("\n\n") +
+      "\n\n" +
+      JSON_ONLY_FOLLOWUP;
 
-  const genAI = new GoogleGenerativeAI(key)
-  const genModel = genAI.getGenerativeModel({
-    model,
-    ...(systemInstruction ? { systemInstruction } : {}),
-    generationConfig: {
-      temperature,
-      maxOutputTokens,
-      responseMimeType: 'application/json'
+    const genAI = new GoogleGenerativeAI(key);
+    const genModel = genAI.getGenerativeModel({
+      model: activeModel,
+      ...(systemInstruction ? { systemInstruction } : {}),
+      generationConfig: {
+        temperature,
+        maxOutputTokens,
+        responseMimeType: "application/json",
+      },
+    });
+
+    const result = await withTimeout(
+      genModel.generateContent(userText),
+      timeoutMs,
+      `Gemini (${activeModel})`,
+    );
+
+    const raw = result.response.text()?.trim();
+    if (!raw) {
+      throw new Error(i18n.t("errors.geminiEmptyResponse"));
     }
-  })
 
-  const result = await withTimeout(
-    genModel.generateContent(userText),
-    timeoutMs,
-    `Gemini (${model})`
-  )
+    const rawLower = raw.toLowerCase();
+    if (
+      rawLower.includes('429') ||
+      rawLower.includes('resource_exhausted') ||
+      rawLower.includes('rate_limit') ||
+      rawLower.includes('quota') ||
+      rawLower.includes('too many requests') ||
+      rawLower.includes('ratelimit')
+    ) {
+      throw new Error(raw);
+    }
 
-  const raw = result.response.text()?.trim()
-  if (!raw) {
-    throw new Error(i18n.t('errors.geminiEmptyResponse'))
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = JSON.parse(extractFirstJsonObject(raw));
+    }
+
+    return schema.parse(parsed);
   }
 
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    parsed = JSON.parse(extractFirstJsonObject(raw))
-  }
-
-  return schema.parse(parsed)
+  const models = modelList && modelList.length > 0 ? modelList : [model];
+  return withModelFallback(models, runWithModel);
 }
 
 /**
@@ -102,58 +130,78 @@ export async function callGeminiJsonWithParts<T>({
   parts,
   schema,
   model,
+  modelList,
   temperature = 0,
   maxOutputTokens = LIMITS.GRADING_MAX_TOKENS,
   timeoutMs = TIMING.AI_CHAT_TIMEOUT_MS,
-  jsonFollowup = JSON_ONLY_FOLLOWUP
+  jsonFollowup = JSON_ONLY_FOLLOWUP,
 }: {
-  systemInstruction?: string
-  parts: Part[]
-  schema: z.ZodType<T>
-  model: string
-  temperature?: number
-  maxOutputTokens?: number
-  timeoutMs?: number
-  jsonFollowup?: string
+  systemInstruction?: string;
+  parts: Part[];
+  schema: z.ZodType<T>;
+  model: string;
+  /** Danh sách model fallback — tự động thử khi bị rate-limit. */
+  modelList?: readonly string[];
+  temperature?: number;
+  maxOutputTokens?: number;
+  timeoutMs?: number;
+  jsonFollowup?: string;
 }): Promise<T> {
-  const key = GEMINI_API_KEY.trim()
+  const key = GEMINI_API_KEY.trim();
   if (!key) {
-    throw new Error(i18n.t('errors.geminiMissingKey'))
+    throw new Error(i18n.t("errors.geminiMissingKey"));
   }
-
-  const genAI = new GoogleGenerativeAI(key)
-  const genModel = genAI.getGenerativeModel({
-    model,
-    ...(systemInstruction ? { systemInstruction } : {}),
-    generationConfig: {
-      temperature,
-      maxOutputTokens,
-      responseMimeType: 'application/json'
-    }
-  })
 
   const tail: Part[] =
     jsonFollowup.trim().length > 0
       ? [{ text: `\n\n${jsonFollowup.trim()}` }]
-      : []
+      : [];
 
-  const result = await withTimeout(
-    genModel.generateContent([...parts, ...tail]),
-    timeoutMs,
-    `Gemini (${model})`
-  )
+  async function runWithModel(activeModel: string): Promise<T> {
+    const genAI = new GoogleGenerativeAI(key);
+    const genModel = genAI.getGenerativeModel({
+      model: activeModel,
+      ...(systemInstruction ? { systemInstruction } : {}),
+      generationConfig: {
+        temperature,
+        maxOutputTokens,
+        responseMimeType: "application/json",
+      },
+    });
 
-  const raw = result.response.text()?.trim()
-  if (!raw) {
-    throw new Error(i18n.t('errors.geminiEmptyResponse'))
+    const result = await withTimeout(
+      genModel.generateContent([...parts, ...tail]),
+      timeoutMs,
+      `Gemini (${activeModel})`,
+    );
+
+    const raw = result.response.text()?.trim();
+    if (!raw) {
+      throw new Error(i18n.t("errors.geminiEmptyResponse"));
+    }
+
+    const rawLower = raw.toLowerCase();
+    if (
+      rawLower.includes('429') ||
+      rawLower.includes('resource_exhausted') ||
+      rawLower.includes('rate_limit') ||
+      rawLower.includes('quota') ||
+      rawLower.includes('too many requests') ||
+      rawLower.includes('ratelimit')
+    ) {
+      throw new Error(raw);
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = JSON.parse(extractFirstJsonObject(raw));
+    }
+
+    return schema.parse(parsed);
   }
 
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
-    parsed = JSON.parse(extractFirstJsonObject(raw))
-  }
-
-  return schema.parse(parsed)
+  const models = modelList && modelList.length > 0 ? modelList : [model];
+  return withModelFallback(models, runWithModel);
 }
